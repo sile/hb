@@ -1,0 +1,16 @@
+[package]
+name = "hb"
+version = "0.1.0"
+authors = ["Takeru Ohta <phjgt308@gmail.com>"]
+
+[dependencies]
+clap = "2"
+fibers = "0.1"
+futures = "0.1"
+miasht = "0.0"
+serde = "1"
+serde_derive = "1"
+serdeconv = "0.3"
+trackable = "0.2"
+url = "1"
+url_serde = "0.2"
