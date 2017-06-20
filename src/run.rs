@@ -1,38 +1,215 @@
 use std::collections::VecDeque;
 use std::io::Read;
+use std::mem;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{self, Duration};
+use slog::Logger;
 use fibers::Spawn;
-use futures::{Future, Poll};
+use fibers::sync::mpsc;
+use fibers::time::timer;
+use futures::{Future, Poll, Async, Stream};
+use handy_async::future::Phase;
 use serdeconv;
 
-use {Result, Error};
-use request::Request;
+use {Result, Error, ErrorKind};
+use request::{self, Request};
+use connection_pool::{self, ConnectionPool, ConnectionPoolHandle};
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Seconds(pub f64);
+impl From<Seconds> for Duration {
+    fn from(f: Seconds) -> Self {
+        Duration::new(f.0 as u64, (f.0 * 1_000_000_000.0) as u32)
+    }
+}
+impl From<Duration> for Seconds {
+    fn from(f: Duration) -> Self {
+        Seconds(
+            f.as_secs() as f64 + (f.subsec_nanos() as f64 / 1_000_000_000.0),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[serde(tag = "result")]
+pub enum RequestResult {
+    Ok {
+        seq_no: usize,
+        elapsed: Seconds,
+        response: Response,
+    },
+    Error {
+        seq_no: usize,
+        elapsed: Seconds,
+        error: ErrorKind,
+    },
+}
+impl RequestResult {
+    pub fn seq_no(&self) -> usize {
+        match *self {
+            RequestResult::Ok { seq_no, .. } => seq_no,
+            RequestResult::Error { seq_no, .. } => seq_no,
+        }
+    }
+    pub fn elapsed(&self) -> Seconds {
+        match *self {
+            RequestResult::Ok { elapsed, .. } => elapsed,
+            RequestResult::Error { elapsed, .. } => elapsed,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Response {
-    pub seq_no: usize,
     pub status: u16,
-    pub elapsed: Duration,
+    pub content_length: u64,
 }
 
 #[derive(Debug, Clone)]
 pub struct RequestQueue {
-    requests: Arc<Mutex<VecDeque<Request>>>,
+    requests: Arc<Mutex<VecDeque<(usize, Request)>>>,
 }
 impl RequestQueue {
     pub fn read_from<R: Read>(reader: R) -> Result<Self> {
-        let requests = track!(serdeconv::from_json_reader(reader))?;
-        let requests = Arc::new(Mutex::new(requests));
+        let requests: Vec<Request> = track!(serdeconv::from_json_reader(reader))?;
+        let requests = Arc::new(Mutex::new(requests.into_iter().enumerate().collect()));
         Ok(RequestQueue { requests })
+    }
+    pub fn pop(&self) -> Result<Option<(usize, Request)>> {
+        let mut requests = track!(self.requests.lock().map_err(Error::from))?;
+        Ok(requests.pop_front())
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ConnectionPool;
+pub struct RunRequest {
+    timeout: Option<timer::Timeout>,
+    request: Request,
+    addr: SocketAddr,
+    phase: Phase<connection_pool::AcquireConnection, request::Call>,
+}
+impl RunRequest {
+    pub fn new(request: Request, pool: &ConnectionPoolHandle) -> Result<Self> {
+        let timeout = request.timeout.map(|d| timer::timeout(d.into()));
+        let addr = track!(request.addr())?;
+        let phase = Phase::A(pool.acquire_connection(addr));
+        Ok(RunRequest {
+            timeout,
+            request,
+            addr,
+            phase,
+        })
+    }
+}
+impl Future for RunRequest {
+    type Item = (SocketAddr, request::TcpConnection, Response);
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        if let Async::Ready(Some(())) = track!(self.timeout.poll().map_err(Error::from))? {
+            track_panic!(ErrorKind::Timeout);
+        }
+        while let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
+            let next = match phase {
+                Phase::A(connection) => {
+                    let future = self.request.call(connection);
+                    Phase::B(future)
+                }
+                Phase::B((connection, response)) => {
+                    return Ok(Async::Ready((self.addr, connection, response)))
+                }
+                _ => unreachable!(),
+            };
+            self.phase = next;
+        }
+        Ok(Async::NotReady)
+    }
+}
 
-#[derive(Debug)]
-pub struct ClientFiber {}
+pub struct ClientFiber {
+    logger: Logger,
+    pool: ConnectionPoolHandle,
+    requests: RequestQueue,
+    response_tx: mpsc::Sender<RequestResult>,
+    last_seq_no: usize, // TODO
+    start_time: time::Instant,
+    future: Option<RunRequest>,
+}
+impl ClientFiber {
+    pub fn new(
+        logger: Logger,
+        pool: ConnectionPoolHandle,
+        requests: RequestQueue,
+        response_tx: mpsc::Sender<RequestResult>,
+    ) -> Self {
+        info!(logger, "Starts a client");
+        ClientFiber {
+            logger,
+            pool,
+            last_seq_no: 0,
+            start_time: time::Instant::now(),
+            requests,
+            response_tx,
+            future: None,
+        }
+    }
+}
+impl Future for ClientFiber {
+    type Item = ();
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        // TODO: handle error
+        loop {
+            match self.future.poll() {
+                Err(e) => {
+                    let result = RequestResult::Error {
+                        seq_no: self.last_seq_no,
+                        elapsed: self.start_time.elapsed().into(),
+                        error: *e.kind(),
+                    };
+                    info!(
+                        self.logger,
+                        "Failed to request: seq_no={}, error={:?}, elapsed={}",
+                        result.seq_no(),
+                        e.kind(),
+                        result.elapsed().0
+                    );
+                    debug!(self.logger, "{}", e);
+                    track!(self.response_tx.send(result).map_err(Error::from))?;
+                    self.future = None;
+                }
+                Ok(Async::Ready(Some((addr, connection, response)))) => {
+                    let result = RequestResult::Ok {
+                        seq_no: self.last_seq_no,
+                        elapsed: self.start_time.elapsed().into(),
+                        response,
+                    };
+                    info!(
+                        self.logger,
+                        "Succeeded to request: seq_no={}, elapsed={}",
+                        result.seq_no(),
+                        result.elapsed().0
+                    );
+                    track!(self.response_tx.send(result).map_err(Error::from))?;
+                    self.pool.release_connection(addr, connection);
+                    self.future = None;
+                }
+                Ok(Async::Ready(None)) => {
+                    if let Some((seq_no, request)) = track!(self.requests.pop())? {
+                        info!(self.logger, "New request is started: seq_no={}", seq_no);
+                        self.last_seq_no = seq_no;
+                        self.start_time = time::Instant::now();
+                        let future = track!(RunRequest::new(request, &self.pool))?;
+                        self.future = Some(future);
+                    } else {
+                        return Ok(Async::Ready(()));
+                    }
+                }
+                Ok(Async::NotReady) => return Ok(Async::NotReady),
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct RunnerBuilder {
@@ -42,38 +219,64 @@ impl RunnerBuilder {
     pub fn new() -> Self {
         RunnerBuilder::default()
     }
-    pub fn finish<S>(&self, spawner: S, requests: RequestQueue) -> Runner
+    pub fn concurrency(&mut self, concurrency: usize) -> &mut Self {
+        self.concurrency = concurrency;
+        self
+    }
+    pub fn finish<S>(&self, logger: Logger, spawner: S, requests: RequestQueue) -> Runner
     where
         S: Spawn,
     {
         let responses = Vec::with_capacity(requests.requests.lock().unwrap().len());
-        let pool = ConnectionPool;
-        for _ in 0..self.concurrency {
-            let future = ClientFiber::new(pool.clone(), requests.clone());
-            spawner.spawn(future);
+        let pool = ConnectionPool::new();
+        let (response_tx, response_rx) = mpsc::channel();
+        for i in 0..self.concurrency {
+            let logger = logger.new(o!("id" => i));
+            let future =
+                ClientFiber::new(logger, pool.handle(), requests.clone(), response_tx.clone());
+            spawner.spawn(future.map_err(|e| panic!("Error: {}", e)));
         }
-        Runner { responses }
+        spawner.spawn(pool.map_err(|e| panic!("Error: {}", e)));
+        Runner {
+            logger,
+            responses,
+            response_rx,
+        }
     }
 }
 impl Default for RunnerBuilder {
     fn default() -> Self {
-        RunnerBuilder { concurrency: 32 }
+        RunnerBuilder { concurrency: 128 }
     }
 }
 
 #[derive(Debug)]
 pub struct Runner {
-    responses: Vec<Response>,
+    logger: Logger,
+    responses: Vec<RequestResult>,
+    response_rx: mpsc::Receiver<RequestResult>,
 }
 impl Runner {
-    pub fn new<S: Spawn>(spawner: S, requests: RequestQueue) -> Self {
-        RunnerBuilder::new().finish(spawner, requests)
+    pub fn new<S: Spawn>(logger: Logger, spawner: S, requests: RequestQueue) -> Self {
+        RunnerBuilder::new().finish(logger, spawner, requests)
     }
 }
 impl Future for Runner {
-    type Item = Vec<Response>;
+    type Item = Vec<RequestResult>;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        panic!()
+        while let Async::Ready(polled) = self.response_rx.poll().expect("Never fails") {
+            if let Some(response) = polled {
+                self.responses.push(response);
+                if self.responses.len() == self.responses.capacity() {
+                    let mut responses = mem::replace(&mut self.responses, Vec::new());
+                    responses.sort_by_key(|r| r.seq_no());
+                    return Ok(Async::Ready(responses));
+                }
+            } else {
+                track_panic!(ErrorKind::Other, "All workers down");
+            }
+        }
+        Ok(Async::NotReady)
     }
 }
