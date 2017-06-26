@@ -25,6 +25,7 @@ pub struct Request {
     pub url: Url,
     pub content: Option<Content>,
     pub timeout: Option<Seconds>,
+    pub start_time: Option<Seconds>,
     // thread, time, header
 }
 impl Request {
