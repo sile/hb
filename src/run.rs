@@ -67,6 +67,8 @@ impl RequestResult {
 pub struct Response {
     pub status: u16,
     pub content_length: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -100,8 +102,7 @@ pub struct RequestQueue {
     requests: Arc<Mutex<BinaryHeap<QueueItem>>>,
 }
 impl RequestQueue {
-    pub fn read_from<R: Read>(reader: R) -> Result<Self> {
-        let requests: Vec<Request> = track!(serdeconv::from_json_reader(reader))?;
+    pub fn new(requests: Vec<Request>) -> Self {
         let requests = Arc::new(Mutex::new(
             requests
                 .into_iter()
@@ -109,7 +110,11 @@ impl RequestQueue {
                 .map(|(seq_no, request)| QueueItem { seq_no, request })
                 .collect(),
         ));
-        Ok(RequestQueue { requests })
+        RequestQueue { requests }
+    }
+    pub fn read_from<R: Read>(reader: R) -> Result<Self> {
+        let requests = track!(serdeconv::from_json_reader(reader))?;
+        Ok(Self::new(requests))
     }
     pub fn push(&self, seq_no: usize, request: Request) -> Result<()> {
         let mut requests = track!(self.requests.lock().map_err(Error::from))?;

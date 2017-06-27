@@ -40,6 +40,9 @@ impl Request {
     pub fn call(&self, connection: TcpConnection) -> Call {
         use miasht::builtin::headers::ContentLength;
         let mut request = connection.build_request(self.method.into(), &self.path());
+        if let Some(host) = self.url.host_str() {
+            request.add_raw_header("HOST", host.as_bytes());
+        }
         let phase = if let Some(content_size) = self.content {
             request.add_header(&ContentLength(content_size as u64));
             Phase::A(request.finish().write_all_bytes(vec![0; content_size]))
@@ -98,6 +101,11 @@ impl Future for Call {
                     let response = Response {
                         status: self.status,
                         content_length: body.len() as u64,
+                        content: if self.status / 100 == 2 {
+                            None
+                        } else {
+                            String::from_utf8(body).ok()
+                        },
                     };
                     return Ok(Async::Ready((connection, response)));
                 }
