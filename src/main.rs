@@ -57,7 +57,7 @@ fn main() {
                         .short("t")
                         .long("threads")
                         .takes_value(true)
-                        .default_value("1"),
+                        .default_value("2"),
                 ),
         )
         .subcommand(
