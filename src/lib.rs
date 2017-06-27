@@ -17,6 +17,7 @@ pub use error::{Error, ErrorKind};
 
 pub mod request;
 pub mod run;
+pub mod summary;
 
 mod connection_pool;
 mod error;

@@ -16,8 +16,14 @@ use {Result, Error, ErrorKind};
 use request::{self, Request};
 use connection_pool::{self, ConnectionPool, ConnectionPoolHandle};
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Seconds(pub f64);
+impl Eq for Seconds {}
+impl Ord for Seconds {
+    fn cmp(&self, other: &Self) -> ::std::cmp::Ordering {
+        Duration::from(*self).cmp(&Duration::from(*other))
+    }
+}
 impl From<Seconds> for Duration {
     fn from(f: Seconds) -> Self {
         Duration::new(f.0 as u64, (f.0.fract() * 1_000_000_000.0) as u32)
@@ -49,6 +55,13 @@ pub enum RequestResult {
     },
 }
 impl RequestResult {
+    pub fn is_ok(&self) -> bool {
+        if let RequestResult::Ok { .. } = *self {
+            true
+        } else {
+            false
+        }
+    }
     pub fn seq_no(&self) -> usize {
         match *self {
             RequestResult::Ok { seq_no, .. } => seq_no,
@@ -59,6 +72,12 @@ impl RequestResult {
         match *self {
             RequestResult::Ok { elapsed, .. } => elapsed,
             RequestResult::Error { elapsed, .. } => elapsed,
+        }
+    }
+    pub fn end_time(&self) -> Seconds {
+        match *self {
+            RequestResult::Ok { end_time, .. } => end_time,
+            RequestResult::Error { end_time, .. } => end_time,
         }
     }
 }

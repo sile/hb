@@ -92,6 +92,23 @@ fn main() {
                         .default_value("1"),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("summary")
+                .arg(
+                    Arg::with_name("INPUT")
+                        .short("i")
+                        .long("input")
+                        .takes_value(true)
+                        .default_value("-"),
+                )
+                .arg(
+                    Arg::with_name("OUTPUT")
+                        .short("o")
+                        .long("output")
+                        .takes_value(true)
+                        .default_value("-"),
+                ),
+        )
         .get_matches();
 
     let loglevel: sloggers::types::Severity =
@@ -185,6 +202,24 @@ fn main() {
             filepath => {
                 let f = track_try_unwrap!(File::create(filepath).map_err(Error::from));
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, f));
+            }
+        }
+    } else if let Some(matches) = matches.subcommand_matches("summary") {
+        let responses = match matches.value_of("INPUT").unwrap() {
+            "-" => track_try_unwrap!(serdeconv::from_json_reader(io::stdin())),
+            filepath => {
+                let f = track_try_unwrap!(File::open(filepath).map_err(Error::from));
+                track_try_unwrap!(serdeconv::from_json_reader(f))
+            }
+        };
+        let summary = hb::summary::Summary::new(responses);
+        match matches.value_of("OUTPUT").unwrap() {
+            "-" => {
+                track_try_unwrap!(serdeconv::to_json_writer_pretty(&summary, io::stdout()));
+            }
+            filepath => {
+                let f = track_try_unwrap!(File::create(filepath).map_err(Error::from));
+                track_try_unwrap!(serdeconv::to_json_writer_pretty(&summary, f));
             }
         }
     } else {
