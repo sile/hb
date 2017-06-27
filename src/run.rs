@@ -20,7 +20,7 @@ use connection_pool::{self, ConnectionPool, ConnectionPoolHandle};
 pub struct Seconds(pub f64);
 impl From<Seconds> for Duration {
     fn from(f: Seconds) -> Self {
-        Duration::new(f.0 as u64, (f.0 * 1_000_000_000.0) as u32)
+        Duration::new(f.0 as u64, (f.0.fract() * 1_000_000_000.0) as u32)
     }
 }
 impl From<Duration> for Seconds {
