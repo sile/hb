@@ -6,6 +6,7 @@ extern crate slog;
 extern crate sloggers;
 #[macro_use]
 extern crate trackable;
+extern crate url;
 
 use std::fs::File;
 use std::io;
@@ -15,6 +16,7 @@ use hb::Error;
 use slog::Logger;
 use sloggers::Build;
 use trackable::error::Failure;
+use url::Url;
 
 fn main() {
     let matches = App::new("hb")
@@ -35,6 +37,38 @@ fn main() {
                         .long("input")
                         .takes_value(true)
                         .default_value("-"),
+                )
+                .arg(
+                    Arg::with_name("OUTPUT")
+                        .short("o")
+                        .long("output")
+                        .takes_value(true)
+                        .default_value("-"),
+                )
+                .arg(
+                    Arg::with_name("CONCURRENCY")
+                        .short("c")
+                        .long("concurrency")
+                        .takes_value(true)
+                        .default_value("32"),
+                )
+                .arg(
+                    Arg::with_name("THREADS")
+                        .short("t")
+                        .long("threads")
+                        .takes_value(true)
+                        .default_value("1"),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("get")
+                .arg(Arg::with_name("URL").index(1).required(true))
+                .arg(
+                    Arg::with_name("REQUESTS")
+                        .short("n")
+                        .long("requests")
+                        .takes_value(true)
+                        .default_value("10"),
                 )
                 .arg(
                     Arg::with_name("OUTPUT")
@@ -97,6 +131,53 @@ fn main() {
             track_try_unwrap!(execute_runner(logger, executor, concurrency, requests))
         };
 
+        match matches.value_of("OUTPUT").unwrap() {
+            "-" => {
+                track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, io::stdout()));
+            }
+            filepath => {
+                let f = track_try_unwrap!(File::create(filepath).map_err(Error::from));
+                track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, f));
+            }
+        }
+    } else if let Some(matches) = matches.subcommand_matches("get") {
+        let url = track_try_unwrap!(Url::parse(matches.value_of("URL").unwrap()).map_err(
+            Failure::from_error,
+        ));
+        let requests: usize =
+            track_try_unwrap!(matches.value_of("REQUESTS").unwrap().parse().map_err(
+                Failure::from_error,
+            ));
+        let threads: usize =
+            track_try_unwrap!(matches.value_of("THREADS").unwrap().parse().map_err(
+                Failure::from_error,
+            ));
+        let concurrency: usize =
+            track_try_unwrap!(matches.value_of("CONCURRENCY").unwrap().parse().map_err(
+                Failure::from_error,
+            ));
+
+        let requests = (0..requests)
+            .map(|_| {
+                hb::request::Request {
+                    method: hb::request::Method::Get,
+                    url: url.clone(),
+                    content: None,
+                    timeout: None,
+                    start_time: None,
+                }
+            })
+            .collect();
+        let requests = hb::run::RequestQueue::new(requests);
+        let responses = if threads == 1 {
+            let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
+            track_try_unwrap!(execute_runner(logger, executor, concurrency, requests))
+        } else {
+            let executor = track_try_unwrap!(
+                ThreadPoolExecutor::with_thread_count(threads).map_err(Error::from)
+            );
+            track_try_unwrap!(execute_runner(logger, executor, concurrency, requests))
+        };
         match matches.value_of("OUTPUT").unwrap() {
             "-" => {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, io::stdout()));
