@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use run::RequestResult;
+use run::{RequestResult, Seconds};
 
 #[derive(Debug, Serialize)]
 pub struct TimeSeries(Vec<Item>);
@@ -26,7 +26,8 @@ impl TimeSeries {
             items
                 .into_iter()
                 .map(|(time, mut item)| {
-                    let latencies = &latencies[&time];
+                    let latencies = latencies.get_mut(&time).unwrap();
+                    latencies.sort_by_key(|l| Seconds(*l));
                     item.latency.min = latencies[0];
                     item.latency.median = latencies[latencies.len() / 2];
                     item.latency.mean = latencies.iter().sum::<f64>() / latencies.len() as f64;
