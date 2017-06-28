@@ -18,6 +18,7 @@ pub use error::{Error, ErrorKind};
 pub mod request;
 pub mod run;
 pub mod summary;
+pub mod time_series;
 
 mod connection_pool;
 mod error;

@@ -74,6 +74,9 @@ impl RequestResult {
             RequestResult::Error { elapsed, .. } => elapsed,
         }
     }
+    pub fn start_time(&self) -> Seconds {
+        Seconds(self.end_time().0 - self.elapsed().0)
+    }
     pub fn end_time(&self) -> Seconds {
         match *self {
             RequestResult::Ok { end_time, .. } => end_time,
