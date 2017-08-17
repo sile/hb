@@ -1,8 +1,8 @@
 [package]
 name = "hb"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Takeru Ohta <phjgt308@gmail.com>"]
-description = "Erlang source code preprocessor"
+description = "HTTP Benchmark Tool"
 homepage = "https://github.com/sile/hb"
 repository = "https://github.com/sile/hb"
 documentation = "https://docs.rs/crate/erl_ast"
