@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::net::SocketAddr;
 use fibers::net::TcpStream;
-use futures::{Future, Poll, Async, IntoFuture, BoxFuture};
+use futures::{Future, Poll, Async, IntoFuture};
 use handy_async::future::Phase;
 use miasht;
 use miasht::builtin::futures::FutureExt;
@@ -70,13 +70,15 @@ impl Request {
     }
 }
 
+type ReadResponseBody = Box<Future<Item = (TcpConnection, Vec<u8>), Error = miasht::Error> + Send>;
+
 pub struct Call {
     status: u16,
     phase: Phase<
         WriteAllBytes<TcpRequest, Vec<u8>>,
         TcpRequest,
         miasht::client::ReadResponse<TcpStream>,
-        BoxFuture<(TcpConnection, Vec<u8>), miasht::Error>,
+        ReadResponseBody,
     >,
 }
 impl Future for Call {
@@ -93,8 +95,8 @@ impl Future for Call {
                         .into_body_reader()
                         .into_future()
                         .and_then(|r| r.read_all_bytes())
-                        .map(|(r, body)| (r.into_inner().finish(), body))
-                        .boxed();
+                        .map(|(r, body)| (r.into_inner().finish(), body));
+                    let future: ReadResponseBody = Box::new(future);
                     Phase::D(future)
                 }
                 Phase::D((connection, body)) => {
