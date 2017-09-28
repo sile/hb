@@ -9,7 +9,7 @@ extern crate trackable;
 extern crate url;
 
 use std::fs::File;
-use std::io;
+use std::io::{self, BufReader};
 use clap::{App, Arg, SubCommand};
 use fibers::{Executor, InPlaceExecutor, ThreadPoolExecutor, Spawn};
 use hb::Error;
@@ -223,10 +223,10 @@ fn main() {
         }
     } else if let Some(matches) = matches.subcommand_matches("summary") {
         let responses = match matches.value_of("INPUT").unwrap() {
-            "-" => track_try_unwrap!(serdeconv::from_json_reader(io::stdin())),
+            "-" => track_try_unwrap!(serdeconv::from_json_reader(BufReader::new(io::stdin()))),
             filepath => {
                 let f = track_try_unwrap!(File::open(filepath).map_err(Error::from));
-                track_try_unwrap!(serdeconv::from_json_reader(f))
+                track_try_unwrap!(serdeconv::from_json_reader(BufReader::new(f)))
             }
         };
         let summary = hb::summary::Summary::new(responses);
@@ -241,10 +241,10 @@ fn main() {
         }
     } else if let Some(matches) = matches.subcommand_matches("time-series") {
         let responses = match matches.value_of("INPUT").unwrap() {
-            "-" => track_try_unwrap!(serdeconv::from_json_reader(io::stdin())),
+            "-" => track_try_unwrap!(serdeconv::from_json_reader(BufReader::new(io::stdin()))),
             filepath => {
                 let f = track_try_unwrap!(File::open(filepath).map_err(Error::from));
-                track_try_unwrap!(serdeconv::from_json_reader(f))
+                track_try_unwrap!(serdeconv::from_json_reader(BufReader::new(f)))
             }
         };
         let summary = hb::time_series::TimeSeries::new(responses);
