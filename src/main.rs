@@ -139,10 +139,14 @@ fn main() {
 
     if let Some(matches) = matches.subcommand_matches("run") {
         let requests = match matches.value_of("INPUT").unwrap() {
-            "-" => track_try_unwrap!(hb::run::RequestQueue::read_from(io::stdin())),
+            "-" => {
+                track_try_unwrap!(hb::run::RequestQueue::read_from(
+                    BufReader::new(io::stdin()),
+                ))
+            }
             filepath => {
                 let f = track_try_unwrap!(File::open(filepath).map_err(Error::from));
-                track_try_unwrap!(hb::run::RequestQueue::read_from(f))
+                track_try_unwrap!(hb::run::RequestQueue::read_from(BufReader::new(f)))
             }
         };
 
