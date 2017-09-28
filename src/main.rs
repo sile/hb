@@ -140,9 +140,8 @@ fn main() {
     if let Some(matches) = matches.subcommand_matches("run") {
         let requests = match matches.value_of("INPUT").unwrap() {
             "-" => {
-                track_try_unwrap!(hb::run::RequestQueue::read_from(
-                    BufReader::new(io::stdin()),
-                ))
+                let stdin = io::stdin();
+                track_try_unwrap!(hb::run::RequestQueue::read_from(stdin.lock()))
             }
             filepath => {
                 let f = track_try_unwrap!(File::open(filepath).map_err(Error::from));
@@ -227,7 +226,10 @@ fn main() {
         }
     } else if let Some(matches) = matches.subcommand_matches("summary") {
         let responses = match matches.value_of("INPUT").unwrap() {
-            "-" => track_try_unwrap!(serdeconv::from_json_reader(BufReader::new(io::stdin()))),
+            "-" => {
+                let stdin = io::stdin();
+                track_try_unwrap!(serdeconv::from_json_reader(stdin.lock()))
+            }
             filepath => {
                 let f = track_try_unwrap!(File::open(filepath).map_err(Error::from));
                 track_try_unwrap!(serdeconv::from_json_reader(BufReader::new(f)))
@@ -245,7 +247,10 @@ fn main() {
         }
     } else if let Some(matches) = matches.subcommand_matches("time-series") {
         let responses = match matches.value_of("INPUT").unwrap() {
-            "-" => track_try_unwrap!(serdeconv::from_json_reader(BufReader::new(io::stdin()))),
+            "-" => {
+                let stdin = io::stdin();
+                track_try_unwrap!(serdeconv::from_json_reader(stdin.lock()))
+            }
             filepath => {
                 let f = track_try_unwrap!(File::open(filepath).map_err(Error::from));
                 track_try_unwrap!(serdeconv::from_json_reader(BufReader::new(f)))
