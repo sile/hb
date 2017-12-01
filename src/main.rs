@@ -62,7 +62,13 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("get")
-                .arg(Arg::with_name("URL").index(1).required(true))
+                .arg(
+                    Arg::with_name("URL")
+                        .index(1)
+                        .required(true)
+                        .multiple(true)
+                        .min_values(1),
+                )
                 .arg(
                     Arg::with_name("REQUESTS")
                         .short("n")
@@ -178,9 +184,11 @@ fn main() {
             }
         }
     } else if let Some(matches) = matches.subcommand_matches("get") {
-        let url = track_try_unwrap!(Url::parse(matches.value_of("URL").unwrap()).map_err(
-            Failure::from_error,
-        ));
+        let mut urls = Vec::new();
+        for url in matches.values_of("URL").unwrap() {
+            let url = track_try_unwrap!(Url::parse(url).map_err(Failure::from_error));
+            urls.push(url);
+        }
         let requests: usize =
             track_try_unwrap!(matches.value_of("REQUESTS").unwrap().parse().map_err(
                 Failure::from_error,
@@ -194,8 +202,10 @@ fn main() {
                 Failure::from_error,
             ));
 
-        let requests = (0..requests)
-            .map(|_| {
+        let requests = urls.iter()
+            .cycle()
+            .zip(0..requests)
+            .map(|(url, _)| {
                 hb::request::Request {
                     method: hb::request::Method::Get,
                     url: url.clone(),
