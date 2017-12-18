@@ -11,7 +11,7 @@ extern crate url;
 use std::fs::File;
 use std::io::{self, BufReader};
 use clap::{App, Arg, SubCommand};
-use fibers::{Executor, InPlaceExecutor, ThreadPoolExecutor, Spawn};
+use fibers::{Executor, InPlaceExecutor, Spawn, ThreadPoolExecutor};
 use hb::Error;
 use slog::Logger;
 use sloggers::Build;
@@ -155,15 +155,21 @@ fn main() {
             }
         };
 
-        let threads: usize =
-            track_try_unwrap!(matches.value_of("THREADS").unwrap().parse().map_err(
-                Failure::from_error,
-            ));
+        let threads: usize = track_try_unwrap!(
+            matches
+                .value_of("THREADS",)
+                .unwrap()
+                .parse()
+                .map_err(Failure::from_error,)
+        );
 
-        let concurrency =
-            track_try_unwrap!(matches.value_of("CONCURRENCY").unwrap().parse().map_err(
-                Failure::from_error,
-            ));
+        let concurrency = track_try_unwrap!(
+            matches
+                .value_of("CONCURRENCY",)
+                .unwrap()
+                .parse()
+                .map_err(Failure::from_error,)
+        );
         let responses = if threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
             track_try_unwrap!(execute_runner(logger, executor, concurrency, requests))
@@ -189,30 +195,37 @@ fn main() {
             let url = track_try_unwrap!(Url::parse(url).map_err(Failure::from_error));
             urls.push(url);
         }
-        let requests: usize =
-            track_try_unwrap!(matches.value_of("REQUESTS").unwrap().parse().map_err(
-                Failure::from_error,
-            ));
-        let threads: usize =
-            track_try_unwrap!(matches.value_of("THREADS").unwrap().parse().map_err(
-                Failure::from_error,
-            ));
-        let concurrency: usize =
-            track_try_unwrap!(matches.value_of("CONCURRENCY").unwrap().parse().map_err(
-                Failure::from_error,
-            ));
+        let requests: usize = track_try_unwrap!(
+            matches
+                .value_of("REQUESTS",)
+                .unwrap()
+                .parse()
+                .map_err(Failure::from_error,)
+        );
+        let threads: usize = track_try_unwrap!(
+            matches
+                .value_of("THREADS",)
+                .unwrap()
+                .parse()
+                .map_err(Failure::from_error,)
+        );
+        let concurrency: usize = track_try_unwrap!(
+            matches
+                .value_of("CONCURRENCY",)
+                .unwrap()
+                .parse()
+                .map_err(Failure::from_error,)
+        );
 
         let requests = urls.iter()
             .cycle()
             .zip(0..requests)
-            .map(|(url, _)| {
-                hb::request::Request {
-                    method: hb::request::Method::Get,
-                    url: url.clone(),
-                    content: None,
-                    timeout: None,
-                    start_time: None,
-                }
+            .map(|(url, _)| hb::request::Request {
+                method: hb::request::Method::Get,
+                url: url.clone(),
+                content: None,
+                timeout: None,
+                start_time: None,
             })
             .collect();
         let requests = hb::run::RequestQueue::new(requests);

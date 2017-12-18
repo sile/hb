@@ -8,11 +8,11 @@ use slog::Logger;
 use fibers::Spawn;
 use fibers::sync::mpsc;
 use fibers::time::timer;
-use futures::{Future, Poll, Async, Stream};
+use futures::{Async, Future, Poll, Stream};
 use handy_async::future::Phase;
 use serdeconv;
 
-use {Result, Error, ErrorKind};
+use {Error, ErrorKind, Result};
 use request::{self, Request};
 use connection_pool::{self, ConnectionPool, ConnectionPoolHandle};
 
@@ -31,9 +31,7 @@ impl From<Seconds> for Duration {
 }
 impl From<Duration> for Seconds {
     fn from(f: Duration) -> Self {
-        Seconds(
-            f.as_secs() as f64 + (f.subsec_nanos() as f64 / 1_000_000_000.0),
-        )
+        Seconds(f.as_secs() as f64 + (f.subsec_nanos() as f64 / 1_000_000_000.0))
     }
 }
 
@@ -89,8 +87,7 @@ impl RequestResult {
 pub struct Response {
     pub status: u16,
     pub content_length: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")] pub content: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -106,11 +103,8 @@ impl PartialEq for QueueItem {
 impl Eq for QueueItem {}
 impl PartialOrd for QueueItem {
     fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
-        (other.request.start_time, other.seq_no).partial_cmp(&(
-            self.request
-                .start_time,
-            self.seq_no,
-        ))
+        (other.request.start_time, other.seq_no)
+            .partial_cmp(&(self.request.start_time, self.seq_no))
     }
 }
 impl Ord for QueueItem {

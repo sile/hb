@@ -10,17 +10,16 @@ impl TimeSeries {
         let mut latencies = BTreeMap::new();
         for r in results {
             let time = r.start_time().0 as usize;
-            let item = items.entry(time).or_insert_with(|| {
-                Item {
-                    time,
-                    ..Item::default()
-                }
+            let item = items.entry(time).or_insert_with(|| Item {
+                time,
+                ..Item::default()
             });
             item.requests += 1;
 
-            latencies.entry(time).or_insert_with(Vec::new).push(
-                r.elapsed().0,
-            );
+            latencies
+                .entry(time)
+                .or_insert_with(Vec::new)
+                .push(r.elapsed().0);
         }
         TimeSeries(
             items

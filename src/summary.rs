@@ -83,10 +83,9 @@ fn unbiased_variance(samples: &[Seconds]) -> f64 {
     }
 
     let n = samples.len() as f64;
-    let (sqsum, sum) = samples.iter().fold(
-        (0.0, 0.0),
-        |(a, b), s| (a + s.0 * s.0, b + s.0),
-    );
+    let (sqsum, sum) = samples
+        .iter()
+        .fold((0.0, 0.0), |(a, b), s| (a + s.0 * s.0, b + s.0));
     let avg = sum / n;
     (sqsum - n * avg * avg) / (n - 1.0)
 }

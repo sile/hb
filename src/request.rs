@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::net::SocketAddr;
 use fibers::net::TcpStream;
-use futures::{Future, Poll, Async, IntoFuture};
+use futures::{Async, Future, IntoFuture, Poll};
 use handy_async::future::Phase;
 use miasht;
 use miasht::builtin::futures::FutureExt;
@@ -11,7 +11,7 @@ use trackable::error::ErrorKindExt;
 use url::Url;
 use url_serde;
 
-use {Result, Error, ErrorKind};
+use {Error, ErrorKind, Result};
 use run::{Response, Seconds};
 
 pub type TcpConnection = miasht::client::Connection<TcpStream>;
@@ -21,8 +21,7 @@ pub type TcpResponse = miasht::client::Response<TcpStream>;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub method: Method,
-    #[serde(with = "url_serde")]
-    pub url: Url,
+    #[serde(with = "url_serde")] pub url: Url,
     pub content: Option<Content>,
     pub timeout: Option<Seconds>,
     pub start_time: Option<Seconds>,

@@ -3,8 +3,8 @@ use std::net::SocketAddr;
 use fibers::net::TcpStream;
 use fibers::sync::mpsc;
 use fibers::sync::oneshot;
-use futures::{self, Future, Poll, Stream, Async};
-use futures::future::{Finished, Failed};
+use futures::{self, Async, Future, Poll, Stream};
+use futures::future::{Failed, Finished};
 use handy_async::future::Phase;
 use miasht;
 
@@ -93,7 +93,9 @@ impl ConnectionPool {
         }
     }
     pub fn handle(&self) -> ConnectionPoolHandle {
-        ConnectionPoolHandle { command_tx: self.command_tx.clone() }
+        ConnectionPoolHandle {
+            command_tx: self.command_tx.clone(),
+        }
     }
 
     fn handle_command(&mut self, command: Command) {

@@ -1,7 +1,7 @@
 use std;
 use std::io;
 use std::sync::PoisonError;
-use std::sync::mpsc::{SendError, RecvError};
+use std::sync::mpsc::{RecvError, SendError};
 use fibers::sync::oneshot::MonitorError;
 use handy_async::future::Phase;
 use miasht;
