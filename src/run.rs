@@ -31,7 +31,7 @@ impl From<Seconds> for Duration {
 }
 impl From<Duration> for Seconds {
     fn from(f: Duration) -> Self {
-        Seconds(f.as_secs() as f64 + (f.subsec_nanos() as f64 / 1_000_000_000.0))
+        Seconds(f.as_secs() as f64 + (f64::from(f.subsec_nanos()) / 1_000_000_000.0))
     }
 }
 
@@ -62,14 +62,12 @@ impl RequestResult {
     }
     pub fn seq_no(&self) -> usize {
         match *self {
-            RequestResult::Ok { seq_no, .. } => seq_no,
-            RequestResult::Error { seq_no, .. } => seq_no,
+            RequestResult::Ok { seq_no, .. } | RequestResult::Error { seq_no, .. } => seq_no,
         }
     }
     pub fn elapsed(&self) -> Seconds {
         match *self {
-            RequestResult::Ok { elapsed, .. } => elapsed,
-            RequestResult::Error { elapsed, .. } => elapsed,
+            RequestResult::Ok { elapsed, .. } | RequestResult::Error { elapsed, .. } => elapsed,
         }
     }
     pub fn start_time(&self) -> Seconds {
@@ -77,8 +75,7 @@ impl RequestResult {
     }
     pub fn end_time(&self) -> Seconds {
         match *self {
-            RequestResult::Ok { end_time, .. } => end_time,
-            RequestResult::Error { end_time, .. } => end_time,
+            RequestResult::Ok { end_time, .. } | RequestResult::Error { end_time, .. } => end_time,
         }
     }
 }
@@ -307,7 +304,7 @@ impl RunnerBuilder {
         self.concurrency = concurrency;
         self
     }
-    pub fn finish<S>(&self, logger: Logger, spawner: S, requests: RequestQueue) -> Runner
+    pub fn finish<S>(&self, logger: Logger, spawner: &S, requests: &RequestQueue) -> Runner
     where
         S: Spawn,
     {
@@ -347,7 +344,7 @@ pub struct Runner {
     response_rx: mpsc::Receiver<RequestResult>,
 }
 impl Runner {
-    pub fn new<S: Spawn>(logger: Logger, spawner: S, requests: RequestQueue) -> Self {
+    pub fn new<S: Spawn>(logger: Logger, spawner: &S, requests: &RequestQueue) -> Self {
         RunnerBuilder::new().finish(logger, spawner, requests)
     }
 }

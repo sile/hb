@@ -172,12 +172,12 @@ fn main() {
         );
         let responses = if threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
-            track_try_unwrap!(execute_runner(logger, executor, concurrency, requests))
+            track_try_unwrap!(execute_runner(logger, executor, concurrency, &requests))
         } else {
             let executor = track_try_unwrap!(
                 ThreadPoolExecutor::with_thread_count(threads).map_err(Error::from)
             );
-            track_try_unwrap!(execute_runner(logger, executor, concurrency, requests))
+            track_try_unwrap!(execute_runner(logger, executor, concurrency, &requests))
         };
 
         match matches.value_of("OUTPUT").unwrap() {
@@ -231,12 +231,12 @@ fn main() {
         let requests = hb::run::RequestQueue::new(requests);
         let responses = if threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
-            track_try_unwrap!(execute_runner(logger, executor, concurrency, requests))
+            track_try_unwrap!(execute_runner(logger, executor, concurrency, &requests))
         } else {
             let executor = track_try_unwrap!(
                 ThreadPoolExecutor::with_thread_count(threads).map_err(Error::from)
             );
-            track_try_unwrap!(execute_runner(logger, executor, concurrency, requests))
+            track_try_unwrap!(execute_runner(logger, executor, concurrency, &requests))
         };
         match matches.value_of("OUTPUT").unwrap() {
             "-" => {
@@ -299,11 +299,11 @@ fn execute_runner<E: Executor>(
     logger: Logger,
     mut executor: E,
     concurrency: usize,
-    requests: hb::run::RequestQueue,
+    requests: &hb::run::RequestQueue,
 ) -> hb::Result<Vec<hb::run::RequestResult>> {
     let runner = hb::run::RunnerBuilder::new()
         .concurrency(concurrency)
-        .finish(logger, executor.handle(), requests);
+        .finish(logger, &executor.handle(), requests);
     let monitor = executor.handle().spawn_monitor(runner);
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
     track!(result.map_err(Error::from))

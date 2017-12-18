@@ -44,8 +44,7 @@ impl Future for FutureConnection {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         if let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
             match phase {
-                Phase::A(connection) => Ok(Async::Ready(connection)),
-                Phase::B(connection) => Ok(Async::Ready(connection)),
+                Phase::A(connection) | Phase::B(connection) => Ok(Async::Ready(connection)),
                 _ => unreachable!(),
             }
         } else {
@@ -114,7 +113,7 @@ impl ConnectionPool {
             Command::ReleaseConnection { addr, connection } => {
                 self.connections
                     .entry(addr)
-                    .or_insert_with(|| Vec::new())
+                    .or_insert_with(Vec::new)
                     .push(connection);
             }
         }

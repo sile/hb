@@ -30,7 +30,7 @@ pub struct Request {
 impl Request {
     pub fn addr(&self) -> Result<SocketAddr> {
         // TODO: check scheme
-        let host = track!(self.url.host_str().ok_or(ErrorKind::Other.error()))?;
+        let host = track!(self.url.host_str().ok_or_else(|| ErrorKind::Other.error()))?;
         let port = self.url.port_or_known_default().expect("Never fails");
         let addr = format!("{}:{}", host, port);
         track!(addr.parse().map_err(Error::from), "addr={:?}", addr)

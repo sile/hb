@@ -16,8 +16,8 @@ impl Summary {
         let duration = results.iter().map(|r| r.end_time()).max().unwrap();
         let latency = Latency::new(&results);
         let mut status = BTreeMap::new();
-        for r in results.iter() {
-            if let RequestResult::Ok { ref response, .. } = *r {
+        for r in results {
+            if let RequestResult::Ok { ref response, .. } = r {
                 *status.entry(response.status).or_insert(0) += 1;
             }
         }
