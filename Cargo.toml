@@ -1,6 +1,6 @@
 [package]
 name = "hb"
-version = "0.0.7"
+version = "0.0.8"
 authors = ["Takeru Ohta <phjgt308@gmail.com>"]
 description = "HTTP Benchmark Tool"
 homepage = "https://github.com/sile/hb"
