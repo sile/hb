@@ -31,6 +31,10 @@ fn main() {
         )
         .subcommand(SubCommandRun::app())
         .subcommand(SubCommandGet::app())
+        .subcommand(SubCommandHead::app())
+        .subcommand(SubCommandDelete::app())
+        .subcommand(SubCommandPut::app())
+        .subcommand(SubCommandPost::app())
         .subcommand(SubCommandSummary::app())
         .subcommand(SubCommandTimeSeries::app())
         .get_matches();
@@ -48,6 +52,14 @@ fn main() {
         SubCommandRun::execute(logger, matches);
     } else if let Some(matches) = matches.subcommand_matches("get") {
         SubCommandGet::execute(logger, matches);
+    } else if let Some(matches) = matches.subcommand_matches("head") {
+        SubCommandHead::execute(logger, matches);
+    } else if let Some(matches) = matches.subcommand_matches("delete") {
+        SubCommandDelete::execute(logger, matches);
+    } else if let Some(matches) = matches.subcommand_matches("put") {
+        SubCommandPut::execute(logger, matches);
+    } else if let Some(matches) = matches.subcommand_matches("post") {
+        SubCommandPost::execute(logger, matches);
     } else if let Some(matches) = matches.subcommand_matches("summary") {
         SubCommandSummary::execute(matches);
     } else if let Some(matches) = matches.subcommand_matches("time-series") {
@@ -154,10 +166,10 @@ impl SubCommandRun {
     }
 }
 
-struct SubCommandGet;
-impl SubCommandGet {
-    fn app() -> App<'static, 'static> {
-        SubCommand::with_name("get")
+struct SubCommandRequest;
+impl SubCommandRequest {
+    fn app(method: &'static str) -> App<'static, 'static> {
+        SubCommand::with_name(method)
             .arg(
                 Arg::with_name("URL")
                     .index(1)
@@ -194,7 +206,12 @@ impl SubCommandGet {
                     .default_value("1"),
             )
     }
-    fn execute(logger: Logger, matches: &ArgMatches) {
+    fn execute(
+        logger: Logger,
+        matches: &ArgMatches,
+        method: hb::request::Method,
+        content: Option<hb::request::Content>,
+    ) {
         let mut urls = Vec::new();
         for url in matches.values_of("URL").unwrap() {
             let url = track_try_unwrap!(Url::parse(url).map_err(Failure::from_error));
@@ -226,9 +243,9 @@ impl SubCommandGet {
             .cycle()
             .zip(0..requests)
             .map(|(url, _)| hb::request::Request {
-                method: hb::request::Method::Get,
+                method,
                 url: url.clone(),
-                content: None,
+                content,
                 timeout: None,
                 start_time: None,
             })
@@ -252,6 +269,76 @@ impl SubCommandGet {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, f));
             }
         }
+    }
+}
+
+struct SubCommandGet;
+impl SubCommandGet {
+    fn app() -> App<'static, 'static> {
+        SubCommandRequest::app("get")
+    }
+    fn execute(logger: Logger, matches: &ArgMatches) {
+        SubCommandRequest::execute(logger, matches, hb::request::Method::Get, None)
+    }
+}
+
+struct SubCommandHead;
+impl SubCommandHead {
+    fn app() -> App<'static, 'static> {
+        SubCommandRequest::app("head")
+    }
+    fn execute(logger: Logger, matches: &ArgMatches) {
+        SubCommandRequest::execute(logger, matches, hb::request::Method::Head, None)
+    }
+}
+
+struct SubCommandDelete;
+impl SubCommandDelete {
+    fn app() -> App<'static, 'static> {
+        SubCommandRequest::app("delete")
+    }
+    fn execute(logger: Logger, matches: &ArgMatches) {
+        SubCommandRequest::execute(logger, matches, hb::request::Method::Delete, None)
+    }
+}
+
+struct SubCommandPut;
+impl SubCommandPut {
+    fn app() -> App<'static, 'static> {
+        SubCommandRequest::app("put").arg(
+            Arg::with_name("CONTENT_LENGTH")
+                .long("content-length")
+                .takes_value(true),
+        )
+    }
+    fn execute(logger: Logger, matches: &ArgMatches) {
+        let content = if let Some(len) = matches.value_of("CONTENT_LENGTH") {
+            let len: usize = track_try_unwrap!(len.parse().map_err(Failure::from_error));
+            Some(len)
+        } else {
+            None
+        };
+        SubCommandRequest::execute(logger, matches, hb::request::Method::Put, content)
+    }
+}
+
+struct SubCommandPost;
+impl SubCommandPost {
+    fn app() -> App<'static, 'static> {
+        SubCommandRequest::app("post").arg(
+            Arg::with_name("CONTENT_LENGTH")
+                .long("content-length")
+                .takes_value(true),
+        )
+    }
+    fn execute(logger: Logger, matches: &ArgMatches) {
+        let content = if let Some(len) = matches.value_of("CONTENT_LENGTH") {
+            let len: usize = track_try_unwrap!(len.parse().map_err(Failure::from_error));
+            Some(len)
+        } else {
+            None
+        };
+        SubCommandRequest::execute(logger, matches, hb::request::Method::Post, content)
     }
 }
 
