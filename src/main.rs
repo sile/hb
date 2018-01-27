@@ -10,7 +10,7 @@ extern crate url;
 
 use std::fs::File;
 use std::io::{self, BufReader};
-use clap::{App, Arg, SubCommand};
+use clap::{App, Arg, ArgMatches, SubCommand};
 use fibers::{Executor, InPlaceExecutor, Spawn, ThreadPoolExecutor};
 use hb::Error;
 use slog::Logger;
@@ -29,109 +29,10 @@ fn main() {
                 .takes_value(true)
                 .default_value("warning"),
         )
-        .subcommand(
-            SubCommand::with_name("run")
-                .arg(
-                    Arg::with_name("INPUT")
-                        .short("i")
-                        .long("input")
-                        .takes_value(true)
-                        .default_value("-"),
-                )
-                .arg(
-                    Arg::with_name("OUTPUT")
-                        .short("o")
-                        .long("output")
-                        .takes_value(true)
-                        .default_value("-"),
-                )
-                .arg(
-                    Arg::with_name("CONCURRENCY")
-                        .short("c")
-                        .long("concurrency")
-                        .takes_value(true)
-                        .default_value("32"),
-                )
-                .arg(
-                    Arg::with_name("THREADS")
-                        .short("t")
-                        .long("threads")
-                        .takes_value(true)
-                        .default_value("2"),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("get")
-                .arg(
-                    Arg::with_name("URL")
-                        .index(1)
-                        .required(true)
-                        .multiple(true)
-                        .min_values(1),
-                )
-                .arg(
-                    Arg::with_name("REQUESTS")
-                        .short("n")
-                        .long("requests")
-                        .takes_value(true)
-                        .default_value("10"),
-                )
-                .arg(
-                    Arg::with_name("OUTPUT")
-                        .short("o")
-                        .long("output")
-                        .takes_value(true)
-                        .default_value("-"),
-                )
-                .arg(
-                    Arg::with_name("CONCURRENCY")
-                        .short("c")
-                        .long("concurrency")
-                        .takes_value(true)
-                        .default_value("32"),
-                )
-                .arg(
-                    Arg::with_name("THREADS")
-                        .short("t")
-                        .long("threads")
-                        .takes_value(true)
-                        .default_value("1"),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("summary")
-                .arg(
-                    Arg::with_name("INPUT")
-                        .short("i")
-                        .long("input")
-                        .takes_value(true)
-                        .default_value("-"),
-                )
-                .arg(
-                    Arg::with_name("OUTPUT")
-                        .short("o")
-                        .long("output")
-                        .takes_value(true)
-                        .default_value("-"),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("time-series")
-                .arg(
-                    Arg::with_name("INPUT")
-                        .short("i")
-                        .long("input")
-                        .takes_value(true)
-                        .default_value("-"),
-                )
-                .arg(
-                    Arg::with_name("OUTPUT")
-                        .short("o")
-                        .long("output")
-                        .takes_value(true)
-                        .default_value("-"),
-                ),
-        )
+        .subcommand(SubCommandRun::app())
+        .subcommand(SubCommandGet::app())
+        .subcommand(SubCommandSummary::app())
+        .subcommand(SubCommandTimeSeries::app())
         .get_matches();
 
     let loglevel: sloggers::types::Severity =
@@ -144,6 +45,67 @@ fn main() {
     );
 
     if let Some(matches) = matches.subcommand_matches("run") {
+        SubCommandRun::execute(logger, matches);
+    } else if let Some(matches) = matches.subcommand_matches("get") {
+        SubCommandGet::execute(logger, matches);
+    } else if let Some(matches) = matches.subcommand_matches("summary") {
+        SubCommandSummary::execute(matches);
+    } else if let Some(matches) = matches.subcommand_matches("time-series") {
+        SubCommandTimeSeries::execute(matches);
+    } else {
+        println!("Usage: {}", matches.usage());
+        std::process::exit(1);
+    }
+}
+
+fn execute_runner<E: Executor>(
+    logger: Logger,
+    mut executor: E,
+    concurrency: usize,
+    requests: &hb::run::RequestQueue,
+) -> hb::Result<Vec<hb::run::RequestResult>> {
+    let runner = hb::run::RunnerBuilder::new()
+        .concurrency(concurrency)
+        .finish(logger, &executor.handle(), requests);
+    let monitor = executor.handle().spawn_monitor(runner);
+    let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
+    track!(result.map_err(Error::from))
+}
+
+struct SubCommandRun;
+impl SubCommandRun {
+    fn app() -> App<'static, 'static> {
+        SubCommand::with_name("run")
+            .arg(
+                Arg::with_name("INPUT")
+                    .short("i")
+                    .long("input")
+                    .takes_value(true)
+                    .default_value("-"),
+            )
+            .arg(
+                Arg::with_name("OUTPUT")
+                    .short("o")
+                    .long("output")
+                    .takes_value(true)
+                    .default_value("-"),
+            )
+            .arg(
+                Arg::with_name("CONCURRENCY")
+                    .short("c")
+                    .long("concurrency")
+                    .takes_value(true)
+                    .default_value("32"),
+            )
+            .arg(
+                Arg::with_name("THREADS")
+                    .short("t")
+                    .long("threads")
+                    .takes_value(true)
+                    .default_value("2"),
+            )
+    }
+    fn execute(logger: Logger, matches: &ArgMatches) {
         let requests = match matches.value_of("INPUT").unwrap() {
             "-" => {
                 let stdin = io::stdin();
@@ -157,18 +119,18 @@ fn main() {
 
         let threads: usize = track_try_unwrap!(
             matches
-                .value_of("THREADS",)
+                .value_of("THREADS")
                 .unwrap()
                 .parse()
-                .map_err(Failure::from_error,)
+                .map_err(Failure::from_error)
         );
 
         let concurrency = track_try_unwrap!(
             matches
-                .value_of("CONCURRENCY",)
+                .value_of("CONCURRENCY")
                 .unwrap()
                 .parse()
-                .map_err(Failure::from_error,)
+                .map_err(Failure::from_error)
         );
         let responses = if threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
@@ -189,7 +151,50 @@ fn main() {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, f));
             }
         }
-    } else if let Some(matches) = matches.subcommand_matches("get") {
+    }
+}
+
+struct SubCommandGet;
+impl SubCommandGet {
+    fn app() -> App<'static, 'static> {
+        SubCommand::with_name("get")
+            .arg(
+                Arg::with_name("URL")
+                    .index(1)
+                    .required(true)
+                    .multiple(true)
+                    .min_values(1),
+            )
+            .arg(
+                Arg::with_name("REQUESTS")
+                    .short("n")
+                    .long("requests")
+                    .takes_value(true)
+                    .default_value("10"),
+            )
+            .arg(
+                Arg::with_name("OUTPUT")
+                    .short("o")
+                    .long("output")
+                    .takes_value(true)
+                    .default_value("-"),
+            )
+            .arg(
+                Arg::with_name("CONCURRENCY")
+                    .short("c")
+                    .long("concurrency")
+                    .takes_value(true)
+                    .default_value("32"),
+            )
+            .arg(
+                Arg::with_name("THREADS")
+                    .short("t")
+                    .long("threads")
+                    .takes_value(true)
+                    .default_value("1"),
+            )
+    }
+    fn execute(logger: Logger, matches: &ArgMatches) {
         let mut urls = Vec::new();
         for url in matches.values_of("URL").unwrap() {
             let url = track_try_unwrap!(Url::parse(url).map_err(Failure::from_error));
@@ -247,7 +252,29 @@ fn main() {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, f));
             }
         }
-    } else if let Some(matches) = matches.subcommand_matches("summary") {
+    }
+}
+
+struct SubCommandSummary;
+impl SubCommandSummary {
+    fn app() -> App<'static, 'static> {
+        SubCommand::with_name("summary")
+            .arg(
+                Arg::with_name("INPUT")
+                    .short("i")
+                    .long("input")
+                    .takes_value(true)
+                    .default_value("-"),
+            )
+            .arg(
+                Arg::with_name("OUTPUT")
+                    .short("o")
+                    .long("output")
+                    .takes_value(true)
+                    .default_value("-"),
+            )
+    }
+    fn execute(matches: &ArgMatches) {
         let responses = match matches.value_of("INPUT").unwrap() {
             "-" => {
                 let stdin = io::stdin();
@@ -268,7 +295,29 @@ fn main() {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&summary, f));
             }
         }
-    } else if let Some(matches) = matches.subcommand_matches("time-series") {
+    }
+}
+
+struct SubCommandTimeSeries;
+impl SubCommandTimeSeries {
+    fn app() -> App<'static, 'static> {
+        SubCommand::with_name("time-series")
+            .arg(
+                Arg::with_name("INPUT")
+                    .short("i")
+                    .long("input")
+                    .takes_value(true)
+                    .default_value("-"),
+            )
+            .arg(
+                Arg::with_name("OUTPUT")
+                    .short("o")
+                    .long("output")
+                    .takes_value(true)
+                    .default_value("-"),
+            )
+    }
+    fn execute(matches: &ArgMatches) {
         let responses = match matches.value_of("INPUT").unwrap() {
             "-" => {
                 let stdin = io::stdin();
@@ -289,22 +338,5 @@ fn main() {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&summary, f));
             }
         }
-    } else {
-        println!("Usage: {}", matches.usage());
-        std::process::exit(1);
     }
-}
-
-fn execute_runner<E: Executor>(
-    logger: Logger,
-    mut executor: E,
-    concurrency: usize,
-    requests: &hb::run::RequestQueue,
-) -> hb::Result<Vec<hb::run::RequestResult>> {
-    let runner = hb::run::RunnerBuilder::new()
-        .concurrency(concurrency)
-        .finish(logger, &executor.handle(), requests);
-    let monitor = executor.handle().spawn_monitor(runner);
-    let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
-    track!(result.map_err(Error::from))
 }
