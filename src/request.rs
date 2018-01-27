@@ -21,7 +21,8 @@ pub type TcpResponse = miasht::client::Response<TcpStream>;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub method: Method,
-    #[serde(with = "url_serde")] pub url: Url,
+    #[serde(with = "url_serde")]
+    pub url: Url,
     pub content: Option<Content>,
     pub timeout: Option<Seconds>,
     pub start_time: Option<Seconds>,
