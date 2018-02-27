@@ -245,7 +245,7 @@ impl SubCommandRequest {
             .map(|(url, _)| hb::request::Request {
                 method,
                 url: url.clone(),
-                content,
+                content: content.clone(),
                 timeout: None,
                 start_time: None,
             })
@@ -314,7 +314,7 @@ impl SubCommandPut {
     fn execute(logger: Logger, matches: &ArgMatches) {
         let content = if let Some(len) = matches.value_of("CONTENT_LENGTH") {
             let len: usize = track_try_unwrap!(len.parse().map_err(Failure::from_error));
-            Some(len)
+            Some(hb::request::Content::Size(len))
         } else {
             None
         };
@@ -334,7 +334,7 @@ impl SubCommandPost {
     fn execute(logger: Logger, matches: &ArgMatches) {
         let content = if let Some(len) = matches.value_of("CONTENT_LENGTH") {
             let len: usize = track_try_unwrap!(len.parse().map_err(Failure::from_error));
-            Some(len)
+            Some(hb::request::Content::Size(len))
         } else {
             None
         };

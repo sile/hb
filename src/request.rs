@@ -48,9 +48,9 @@ impl Request {
         if let Some(host) = self.url.host_str() {
             request.add_raw_header("HOST", host.as_bytes());
         }
-        let phase = if let Some(content_size) = self.content {
-            request.add_header(&ContentLength(content_size as u64));
-            Phase::A(request.finish().write_all_bytes(vec![0; content_size]))
+        let phase = if let Some(ref content) = self.content {
+            request.add_header(&ContentLength(content.size() as u64));
+            Phase::A(request.finish().write_all_bytes(content.to_bytes()))
         } else {
             request.add_header(&ContentLength(0));
             Phase::B(request.finish())
@@ -145,9 +145,23 @@ impl From<Method> for miasht::Method {
     }
 }
 
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub enum Content {
-//     File,
-//     Zeros(usize),
-// }
-pub type Content = usize;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Content {
+    Size(usize),
+    Text(String),
+}
+impl Content {
+    pub fn size(&self) -> usize {
+        match *self {
+            Content::Size(size) => size,
+            Content::Text(ref text) => text.len(),
+        }
+    }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        match *self {
+            Content::Size(size) => vec![0; size],
+            Content::Text(ref text) => text.clone().into_bytes(),
+        }
+    }
+}
