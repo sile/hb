@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 use fibers::net::TcpStream;
 use futures::{Async, Future, IntoFuture, Poll};
 use handy_async::future::Phase;
@@ -21,8 +21,7 @@ pub type TcpResponse = miasht::client::Response<TcpStream>;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub method: Method,
-    #[serde(with = "url_serde")]
-    pub url: Url,
+    #[serde(with = "url_serde")] pub url: Url,
     pub content: Option<Content>,
     pub timeout: Option<Seconds>,
     pub start_time: Option<Seconds>,
@@ -33,8 +32,14 @@ impl Request {
         // TODO: check scheme
         let host = track!(self.url.host_str().ok_or_else(|| ErrorKind::Other.error()))?;
         let port = self.url.port_or_known_default().expect("Never fails");
-        let addr = format!("{}:{}", host, port);
-        track!(addr.parse().map_err(Error::from), "addr={:?}", addr)
+        let mut addrs = track!(
+            (host, port).to_socket_addrs().map_err(Error::from),
+            "{}:{}",
+            host,
+            port
+        )?;
+        let addr = track_assert_some!(addrs.next(), ErrorKind::Other);
+        Ok(addr)
     }
 
     pub fn call(&self, connection: TcpConnection) -> Call {

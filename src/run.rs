@@ -84,8 +84,7 @@ impl RequestResult {
 pub struct Response {
     pub status: u16,
     pub content_length: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")] pub content: Option<String>,
 }
 
 #[derive(Debug, Clone)]
