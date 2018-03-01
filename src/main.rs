@@ -307,14 +307,18 @@ impl SubCommandDelete {
 struct SubCommandPut;
 impl SubCommandPut {
     fn app() -> App<'static, 'static> {
-        SubCommandRequest::app("put").arg(
-            Arg::with_name("CONTENT_LENGTH")
-                .long("content-length")
-                .takes_value(true),
-        )
+        SubCommandRequest::app("put")
+            .arg(
+                Arg::with_name("CONTENT_LENGTH")
+                    .long("content-length")
+                    .takes_value(true),
+            )
+            .arg(Arg::with_name("CONTENT").long("content").takes_value(true))
     }
     fn execute(logger: Logger, matches: &ArgMatches) {
-        let content = if let Some(len) = matches.value_of("CONTENT_LENGTH") {
+        let content = if let Some(text) = matches.value_of("CONTENT") {
+            Some(hb::request::Content::Text(text.to_owned()))
+        } else if let Some(len) = matches.value_of("CONTENT_LENGTH") {
             let len: usize = track_try_unwrap!(len.parse().map_err(Failure::from_error));
             Some(hb::request::Content::Size(len))
         } else {
@@ -327,14 +331,18 @@ impl SubCommandPut {
 struct SubCommandPost;
 impl SubCommandPost {
     fn app() -> App<'static, 'static> {
-        SubCommandRequest::app("post").arg(
-            Arg::with_name("CONTENT_LENGTH")
-                .long("content-length")
-                .takes_value(true),
-        )
+        SubCommandRequest::app("post")
+            .arg(
+                Arg::with_name("CONTENT_LENGTH")
+                    .long("content-length")
+                    .takes_value(true),
+            )
+            .arg(Arg::with_name("CONTENT").long("content").takes_value(true))
     }
     fn execute(logger: Logger, matches: &ArgMatches) {
-        let content = if let Some(len) = matches.value_of("CONTENT_LENGTH") {
+        let content = if let Some(text) = matches.value_of("CONTENT") {
+            Some(hb::request::Content::Text(text.to_owned()))
+        } else if let Some(len) = matches.value_of("CONTENT_LENGTH") {
             let len: usize = track_try_unwrap!(len.parse().map_err(Failure::from_error));
             Some(hb::request::Content::Size(len))
         } else {
