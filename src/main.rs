@@ -157,6 +157,7 @@ impl SubCommandRun {
         match matches.value_of("OUTPUT").unwrap() {
             "-" => {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, io::stdout()));
+                println!("");
             }
             filepath => {
                 let f = track_try_unwrap!(File::create(filepath).map_err(Error::from));
@@ -263,6 +264,7 @@ impl SubCommandRequest {
         match matches.value_of("OUTPUT").unwrap() {
             "-" => {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, io::stdout()));
+                println!("");
             }
             filepath => {
                 let f = track_try_unwrap!(File::create(filepath).map_err(Error::from));
@@ -376,6 +378,7 @@ impl SubCommandSummary {
         match matches.value_of("OUTPUT").unwrap() {
             "-" => {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&summary, io::stdout()));
+                println!("");
             }
             filepath => {
                 let f = track_try_unwrap!(File::create(filepath).map_err(Error::from));
@@ -419,6 +422,7 @@ impl SubCommandTimeSeries {
         match matches.value_of("OUTPUT").unwrap() {
             "-" => {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&summary, io::stdout()));
+                println!("");
             }
             filepath => {
                 let f = track_try_unwrap!(File::create(filepath).map_err(Error::from));
