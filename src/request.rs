@@ -1,22 +1,16 @@
-use fibers::net::TcpStream;
-use futures::{Async, Future, IntoFuture, Poll};
-use handy_async::future::Phase;
-use miasht;
-use miasht::builtin::futures::FutureExt;
-use miasht::builtin::futures::WriteAllBytes;
-use miasht::builtin::io::IoExt;
+use fibers_http_client::connection::ConnectionPoolHandle;
+use fibers_http_client::Client;
+use futures::Future;
+use httpcodec::Response;
 use std::borrow::Cow;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::time::Duration;
 use trackable::error::ErrorKindExt;
 use url::Url;
 use url_serde;
 
-use run::{Response, Seconds};
+use run::Seconds;
 use {Error, ErrorKind, Result};
-
-pub type TcpConnection = miasht::client::Connection<TcpStream>;
-pub type TcpRequest = miasht::client::Request<TcpStream>;
-pub type TcpResponse = miasht::client::Response<TcpStream>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
@@ -43,21 +37,35 @@ impl Request {
         Ok(addr)
     }
 
-    pub fn call(&self, connection: TcpConnection) -> Call {
-        use miasht::builtin::headers::ContentLength;
-        let mut request = connection.build_request(self.method.into(), &self.path());
-        if let Some(host) = self.url.host_str() {
-            request.add_raw_header("HOST", host.as_bytes());
+    pub fn call(
+        &self,
+        client: &mut Client<ConnectionPoolHandle>,
+        timeout: Option<Duration>,
+    ) -> Box<Future<Item = Response<Vec<u8>>, Error = Error> + Send + 'static> {
+        let mut request = client.request(&self.url);
+        if let Some(timeout) = timeout {
+            request = request.timeout(timeout);
         }
-        let phase = if let Some(ref content) = self.content {
-            request.add_header(&ContentLength(content.size() as u64));
-            Phase::A(request.finish().write_all_bytes(content.to_bytes()))
-        } else {
-            request.add_header(&ContentLength(0));
-            Phase::B(request.finish())
-        };
-        Call { status: 0, phase }
+        match self.method {
+            Method::Get => Box::new(request.get().map_err(Error::from)),
+            Method::Head => Box::new(
+                request
+                    .head()
+                    .map(|res| res.map_body(|_| Vec::new()))
+                    .map_err(Error::from),
+            ),
+            Method::Delete => Box::new(request.delete().map_err(Error::from)),
+            Method::Post => {
+                let content = self.content.as_ref().map_or(Vec::new(), |c| c.to_bytes());
+                Box::new(request.post(content).map_err(Error::from))
+            }
+            Method::Put => {
+                let content = self.content.as_ref().map_or(Vec::new(), |c| c.to_bytes());
+                Box::new(request.put(content).map_err(Error::from))
+            }
+        }
     }
+
     pub fn path(&self) -> Cow<str> {
         if self.url.query().is_none() && self.url.fragment().is_none() {
             Cow::Borrowed(self.url.path())
@@ -76,55 +84,6 @@ impl Request {
     }
 }
 
-type ReadResponseBody = Box<Future<Item = (TcpConnection, Vec<u8>), Error = miasht::Error> + Send>;
-
-pub struct Call {
-    status: u16,
-    phase: Phase<
-        WriteAllBytes<TcpRequest, Vec<u8>>,
-        TcpRequest,
-        miasht::client::ReadResponse<TcpStream>,
-        ReadResponseBody,
-    >,
-}
-impl Future for Call {
-    type Item = (TcpConnection, Response);
-    type Error = Error;
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        while let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
-            let next = match phase {
-                Phase::A(request) => Phase::B(request),
-                Phase::B(connection) => Phase::C(connection.read_response()),
-                Phase::C(response) => {
-                    self.status = response.status().code();
-                    let future = response
-                        .into_body_reader()
-                        .into_future()
-                        .and_then(|r| r.read_all_bytes())
-                        .map(|(r, body)| (r.into_inner().finish(), body));
-                    let future: ReadResponseBody = Box::new(future);
-                    Phase::D(future)
-                }
-                Phase::D((connection, body)) => {
-                    let response = Response {
-                        status: self.status,
-                        content_length: body.len() as u64,
-                        content: if self.status / 100 == 2 {
-                            None
-                        } else {
-                            String::from_utf8(body).ok()
-                        },
-                    };
-                    return Ok(Async::Ready((connection, response)));
-                }
-                _ => unreachable!(),
-            };
-            self.phase = next;
-        }
-        Ok(Async::NotReady)
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Method {
@@ -133,17 +92,6 @@ pub enum Method {
     Get,
     Head,
     Delete,
-}
-impl From<Method> for miasht::Method {
-    fn from(f: Method) -> Self {
-        match f {
-            Method::Put => miasht::Method::Put,
-            Method::Post => miasht::Method::Post,
-            Method::Get => miasht::Method::Get,
-            Method::Head => miasht::Method::Head,
-            Method::Delete => miasht::Method::Delete,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

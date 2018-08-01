@@ -1,6 +1,5 @@
 use fibers::sync::oneshot::MonitorError;
-use handy_async::future::Phase;
-use miasht;
+use fibers_http_client;
 use serdeconv;
 use std;
 use std::io;
@@ -29,9 +28,14 @@ impl From<std::net::AddrParseError> for Error {
         ErrorKind::Other.cause(f).into()
     }
 }
-impl From<miasht::Error> for Error {
-    fn from(f: miasht::Error) -> Self {
-        ErrorKind::Other.takes_over(f).into()
+impl From<fibers_http_client::Error> for Error {
+    fn from(f: fibers_http_client::Error) -> Self {
+        let original_error_kind = *f.kind();
+        let kind = match original_error_kind {
+            fibers_http_client::ErrorKind::Timeout => ErrorKind::Timeout,
+            _ => ErrorKind::Other,
+        };
+        track!(kind.takes_over(f); original_error_kind).into()
     }
 }
 impl From<serdeconv::Error> for Error {
@@ -61,23 +65,5 @@ impl From<RecvError> for Error {
 impl<T> From<PoisonError<T>> for Error {
     fn from(f: PoisonError<T>) -> Self {
         ErrorKind::Other.cause(f.to_string()).into()
-    }
-}
-impl<A, B, C, D, E> From<Phase<A, B, C, D, E>> for Error
-where
-    Error: From<A>,
-    Error: From<B>,
-    Error: From<C>,
-    Error: From<D>,
-    Error: From<E>,
-{
-    fn from(f: Phase<A, B, C, D, E>) -> Self {
-        match f {
-            Phase::A(e) => track!(Error::from(e), "Phase::A"),
-            Phase::B(e) => track!(Error::from(e), "Phase::B"),
-            Phase::C(e) => track!(Error::from(e), "Phase::C"),
-            Phase::D(e) => track!(Error::from(e), "Phase::D"),
-            Phase::E(e) => track!(Error::from(e), "Phase::E"),
-        }
     }
 }

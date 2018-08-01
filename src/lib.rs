@@ -1,7 +1,7 @@
 extern crate fibers;
+extern crate fibers_http_client;
 extern crate futures;
-extern crate handy_async;
-extern crate miasht;
+extern crate httpcodec;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -20,7 +20,6 @@ pub mod run;
 pub mod summary;
 pub mod time_series;
 
-mod connection_pool;
 mod error;
 
 pub type Result<T> = ::std::result::Result<T, Error>;

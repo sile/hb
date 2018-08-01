@@ -1,3 +1,4 @@
+#[macro_use]
 extern crate clap;
 extern crate fibers;
 extern crate hb;
@@ -19,9 +20,7 @@ use trackable::error::Failure;
 use url::Url;
 
 fn main() {
-    let matches = App::new("hb")
-        .version(env!("CARGO_PKG_VERSION"))
-        .about(env!("CARGO_PKG_DESCRIPTION"))
+    let matches = app_from_crate!()
         .arg(
             Arg::with_name("LOGLEVEL")
                 .short("l")

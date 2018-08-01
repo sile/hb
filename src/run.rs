@@ -1,23 +1,28 @@
 use fibers::sync::mpsc;
 use fibers::time::timer;
 use fibers::Spawn;
+use fibers_http_client::connection::{ConnectionPool, ConnectionPoolHandle};
+use fibers_http_client::Client;
 use futures::{Async, Future, Poll, Stream};
-use handy_async::future::Phase;
+use httpcodec::Response as HttpResponse;
 use serdeconv;
 use slog::Logger;
 use std::collections::BinaryHeap;
 use std::io::Read;
 use std::mem;
-use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{self, Duration};
 
-use connection_pool::{self, ConnectionPool, ConnectionPoolHandle};
-use request::{self, Request};
+use request::Request;
 use {Error, ErrorKind, Result};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Seconds(pub f64);
+impl Seconds {
+    fn to_duration(&self) -> Duration {
+        Duration::new(self.0 as u64, (self.0.fract() * 1_000_000_000.0) as u32)
+    }
+}
 impl Eq for Seconds {}
 impl Ord for Seconds {
     fn cmp(&self, other: &Self) -> ::std::cmp::Ordering {
@@ -142,45 +147,28 @@ impl RequestQueue {
 }
 
 pub struct RunRequest {
-    timeout: Option<timer::Timeout>,
-    request: Request,
-    addr: SocketAddr,
-    phase: Phase<connection_pool::AcquireConnection, request::Call>,
+    future: Box<Future<Item = HttpResponse<Vec<u8>>, Error = Error> + Send + 'static>,
 }
 impl RunRequest {
-    pub fn new(request: Request, pool: &ConnectionPoolHandle) -> Result<Self> {
-        let timeout = request.timeout.map(|d| timer::timeout(d.into()));
-        let addr = track!(request.addr())?;
-        let phase = Phase::A(pool.acquire_connection(addr));
-        Ok(RunRequest {
-            timeout,
-            request,
-            addr,
-            phase,
-        })
+    pub fn new(request: Request, client: &mut Client<ConnectionPoolHandle>) -> Result<Self> {
+        let future = request.call(client, request.timeout.map(|t| t.to_duration()));
+        Ok(RunRequest { future })
     }
 }
 impl Future for RunRequest {
-    type Item = (SocketAddr, request::TcpConnection, Response);
+    type Item = Response;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        if let Async::Ready(Some(())) = track!(self.timeout.poll().map_err(Error::from))? {
-            track_panic!(ErrorKind::Timeout);
-        }
-        while let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
-            let next = match phase {
-                Phase::A(connection) => {
-                    let future = self.request.call(connection);
-                    Phase::B(future)
-                }
-                Phase::B((connection, response)) => {
-                    return Ok(Async::Ready((self.addr, connection, response)))
-                }
-                _ => unreachable!(),
+        if let Async::Ready(response) = track!(self.future.poll())? {
+            let response = Response {
+                status: response.status_code().as_u16(),
+                content_length: response.body().len() as u64,
+                content: String::from_utf8(response.into_body()).ok(),
             };
-            self.phase = next;
+            Ok(Async::Ready(response))
+        } else {
+            Ok(Async::NotReady)
         }
-        Ok(Async::NotReady)
     }
 }
 
@@ -247,7 +235,7 @@ impl Future for ClientFiber {
                     track!(self.response_tx.send(result).map_err(Error::from))?;
                     self.future = None;
                 }
-                Ok(Async::Ready(Some((addr, connection, response)))) => {
+                Ok(Async::Ready(Some(response))) => {
                     let result = RequestResult::Ok {
                         seq_no: self.last_seq_no,
                         end_time: self.bench_start.elapsed().into(),
@@ -261,7 +249,6 @@ impl Future for ClientFiber {
                         result.elapsed().0
                     );
                     track!(self.response_tx.send(result).map_err(Error::from))?;
-                    self.pool.release_connection(addr, connection);
                     self.future = None;
                 }
                 Ok(Async::Ready(None)) => {
@@ -281,7 +268,9 @@ impl Future for ClientFiber {
                         info!(self.logger, "New request is started: seq_no={}", seq_no);
                         self.last_seq_no = seq_no;
                         self.start_time = time::Instant::now();
-                        let future = track!(RunRequest::new(request, &self.pool))?;
+
+                        let mut client = Client::new(self.pool.clone());
+                        let future = track!(RunRequest::new(request, &mut client))?;
                         self.future = Some(future);
                     } else {
                         return Ok(Async::Ready(()));
@@ -307,11 +296,11 @@ impl RunnerBuilder {
     }
     pub fn finish<S>(&self, logger: Logger, spawner: &S, requests: &RequestQueue) -> Runner
     where
-        S: Spawn,
+        S: Spawn + Clone + Send + 'static,
     {
         let bench_start = time::Instant::now();
         let responses = Vec::with_capacity(requests.requests.lock().unwrap().len());
-        let pool = ConnectionPool::new();
+        let pool = ConnectionPool::new(spawner.clone());
         let (response_tx, response_rx) = mpsc::channel();
         for i in 0..self.concurrency {
             let logger = logger.new(o!("id" => i));
@@ -345,7 +334,10 @@ pub struct Runner {
     response_rx: mpsc::Receiver<RequestResult>,
 }
 impl Runner {
-    pub fn new<S: Spawn>(logger: Logger, spawner: &S, requests: &RequestQueue) -> Self {
+    pub fn new<S>(logger: Logger, spawner: &S, requests: &RequestQueue) -> Self
+    where
+        S: Spawn + Clone + Send + 'static,
+    {
         RunnerBuilder::new().finish(logger, spawner, requests)
     }
 }
