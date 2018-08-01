@@ -300,24 +300,24 @@ impl RunnerBuilder {
     {
         let bench_start = time::Instant::now();
         let responses = Vec::with_capacity(requests.requests.lock().unwrap().len());
-        let pool = ConnectionPool::new(spawner.clone());
+        let connection_pool = ConnectionPool::new(spawner.clone());
         let (response_tx, response_rx) = mpsc::channel();
         for i in 0..self.concurrency {
             let logger = logger.new(o!("id" => i));
             let future = ClientFiber::new(
                 logger,
-                pool.handle(),
+                connection_pool.handle(),
                 bench_start,
                 requests.clone(),
                 response_tx.clone(),
             );
             spawner.spawn(future.map_err(|e| panic!("Error: {}", e)));
         }
-        spawner.spawn(pool.map_err(|e| panic!("Error: {}", e)));
         Runner {
             logger,
             responses,
             response_rx,
+            connection_pool,
         }
     }
 }
@@ -332,6 +332,7 @@ pub struct Runner {
     logger: Logger,
     responses: Vec<RequestResult>,
     response_rx: mpsc::Receiver<RequestResult>,
+    connection_pool: ConnectionPool,
 }
 impl Runner {
     pub fn new<S>(logger: Logger, spawner: &S, requests: &RequestQueue) -> Self
@@ -357,6 +358,7 @@ impl Future for Runner {
                 track_panic!(ErrorKind::Other, "All workers down");
             }
         }
+        track!(self.connection_pool.poll())?;
         Ok(Async::NotReady)
     }
 }
