@@ -19,7 +19,7 @@ use {Error, ErrorKind, Result};
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Seconds(pub f64);
 impl Seconds {
-    fn to_duration(&self) -> Duration {
+    fn to_duration(self) -> Duration {
         Duration::new(self.0 as u64, (self.0.fract() * 1_000_000_000.0) as u32)
     }
 }
