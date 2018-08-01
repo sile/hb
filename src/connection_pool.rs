@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-use std::net::SocketAddr;
 use fibers::net::TcpStream;
 use fibers::sync::mpsc;
 use fibers::sync::oneshot;
-use futures::{self, Async, Future, Poll, Stream};
 use futures::future::{Failed, Finished};
+use futures::{self, Async, Future, Poll, Stream};
 use handy_async::future::Phase;
 use miasht;
+use std::collections::HashMap;
+use std::net::SocketAddr;
 
 use Error;
 

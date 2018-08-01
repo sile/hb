@@ -8,13 +8,13 @@ extern crate sloggers;
 extern crate trackable;
 extern crate url;
 
-use std::fs::File;
-use std::io::{self, BufReader};
 use clap::{App, Arg, ArgMatches, SubCommand};
 use fibers::{Executor, InPlaceExecutor, Spawn, ThreadPoolExecutor};
 use hb::Error;
 use slog::Logger;
 use sloggers::Build;
+use std::fs::File;
+use std::io::{self, BufReader};
 use trackable::error::Failure;
 use url::Url;
 

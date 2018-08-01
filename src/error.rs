@@ -1,11 +1,11 @@
-use std;
-use std::io;
-use std::sync::PoisonError;
-use std::sync::mpsc::{RecvError, SendError};
 use fibers::sync::oneshot::MonitorError;
 use handy_async::future::Phase;
 use miasht;
 use serdeconv;
+use std;
+use std::io;
+use std::sync::mpsc::{RecvError, SendError};
+use std::sync::PoisonError;
 use trackable::error::TrackableError;
 use trackable::error::{ErrorKind as TrackableErrorKind, ErrorKindExt};
 

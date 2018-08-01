@@ -1,20 +1,20 @@
+use fibers::sync::mpsc;
+use fibers::time::timer;
+use fibers::Spawn;
+use futures::{Async, Future, Poll, Stream};
+use handy_async::future::Phase;
+use serdeconv;
+use slog::Logger;
 use std::collections::BinaryHeap;
 use std::io::Read;
 use std::mem;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{self, Duration};
-use slog::Logger;
-use fibers::Spawn;
-use fibers::sync::mpsc;
-use fibers::time::timer;
-use futures::{Async, Future, Poll, Stream};
-use handy_async::future::Phase;
-use serdeconv;
 
-use {Error, ErrorKind, Result};
-use request::{self, Request};
 use connection_pool::{self, ConnectionPool, ConnectionPoolHandle};
+use request::{self, Request};
+use {Error, ErrorKind, Result};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Seconds(pub f64);
@@ -84,7 +84,8 @@ impl RequestResult {
 pub struct Response {
     pub status: u16,
     pub content_length: u64,
-    #[serde(skip_serializing_if = "Option::is_none")] pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
 }
 
 #[derive(Debug, Clone)]
