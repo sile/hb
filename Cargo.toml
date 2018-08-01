@@ -8,6 +8,10 @@ repository = "https://github.com/sile/hb"
 readme = "README.md"
 license = "MIT"
 
+[badges]
+travis-ci = {repository = "sile/hb"}
+codecov = {repository = "sile/hb"}
+
 [dependencies]
 clap = "2"
 fibers = "0.1"
