@@ -1,7 +1,7 @@
 use fibers::sync::mpsc;
 use fibers::time::timer;
 use fibers::Spawn;
-use fibers_http_client::connection::{ConnectionPool, ConnectionPoolHandle};
+use fibers_http_client::connection::{ConnectionPool, ConnectionPoolBuilder, ConnectionPoolHandle};
 use fibers_http_client::Client;
 use futures::{Async, Future, Poll, Stream};
 use httpcodec::Response as HttpResponse;
@@ -54,7 +54,7 @@ pub enum RequestResult {
         seq_no: usize,
         end_time: Seconds,
         elapsed: Seconds,
-        error: ErrorKind,
+        error: Error,
     },
 }
 impl RequestResult {
@@ -222,7 +222,7 @@ impl Future for ClientFiber {
                         seq_no: self.last_seq_no,
                         end_time: self.bench_start.elapsed().into(),
                         elapsed: self.start_time.elapsed().into(),
-                        error: *e.kind(),
+                        error: e.clone(),
                     };
                     info!(
                         self.logger,
@@ -285,6 +285,7 @@ impl Future for ClientFiber {
 #[derive(Debug)]
 pub struct RunnerBuilder {
     concurrency: usize,
+    connection_pool_size: usize,
 }
 impl RunnerBuilder {
     pub fn new() -> Self {
@@ -294,13 +295,19 @@ impl RunnerBuilder {
         self.concurrency = concurrency;
         self
     }
+    pub fn connection_pool_size(&mut self, size: usize) -> &mut Self {
+        self.connection_pool_size = size;
+        self
+    }
     pub fn finish<S>(&self, logger: Logger, spawner: &S, requests: &RequestQueue) -> Runner
     where
         S: Spawn + Clone + Send + 'static,
     {
         let bench_start = time::Instant::now();
         let responses = Vec::with_capacity(requests.requests.lock().unwrap().len());
-        let connection_pool = ConnectionPool::new(spawner.clone());
+        let connection_pool = ConnectionPoolBuilder::new()
+            .max_pool_size(self.connection_pool_size)
+            .finish(spawner.clone());
         let (response_tx, response_rx) = mpsc::channel();
         for i in 0..self.concurrency {
             let logger = logger.new(o!("id" => i));
@@ -323,7 +330,10 @@ impl RunnerBuilder {
 }
 impl Default for RunnerBuilder {
     fn default() -> Self {
-        RunnerBuilder { concurrency: 128 }
+        RunnerBuilder {
+            concurrency: 128,
+            connection_pool_size: 4096,
+        }
     }
 }
 

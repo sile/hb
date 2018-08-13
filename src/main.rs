@@ -73,10 +73,12 @@ fn execute_runner<E: Executor>(
     logger: Logger,
     mut executor: E,
     concurrency: usize,
+    connection_pool_size: usize,
     requests: &hb::run::RequestQueue,
 ) -> hb::Result<Vec<hb::run::RequestResult>> {
     let runner = hb::run::RunnerBuilder::new()
         .concurrency(concurrency)
+        .connection_pool_size(connection_pool_size)
         .finish(logger, &executor.handle(), requests);
     let monitor = executor.handle().spawn_monitor(runner);
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
@@ -107,6 +109,12 @@ impl SubCommandRun {
                     .long("concurrency")
                     .takes_value(true)
                     .default_value("32"),
+            )
+            .arg(
+                Arg::with_name("CONNECTION_POOL_SIZE")
+                    .long("connection-pool-size")
+                    .takes_value(true)
+                    .default_value("4096"),
             )
             .arg(
                 Arg::with_name("THREADS")
@@ -143,14 +151,33 @@ impl SubCommandRun {
                 .parse()
                 .map_err(Failure::from_error)
         );
+        let connection_pool_size = track_try_unwrap!(
+            matches
+                .value_of("CONNECTION_POOL_SIZE")
+                .unwrap()
+                .parse()
+                .map_err(Failure::from_error)
+        );
         let responses = if threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
-            track_try_unwrap!(execute_runner(logger, executor, concurrency, &requests))
+            track_try_unwrap!(execute_runner(
+                logger,
+                executor,
+                concurrency,
+                connection_pool_size,
+                &requests
+            ))
         } else {
             let executor = track_try_unwrap!(
                 ThreadPoolExecutor::with_thread_count(threads).map_err(Error::from)
             );
-            track_try_unwrap!(execute_runner(logger, executor, concurrency, &requests))
+            track_try_unwrap!(execute_runner(
+                logger,
+                executor,
+                concurrency,
+                connection_pool_size,
+                &requests
+            ))
         };
 
         match matches.value_of("OUTPUT").unwrap() {
@@ -199,6 +226,12 @@ impl SubCommandRequest {
                     .default_value("32"),
             )
             .arg(
+                Arg::with_name("CONNECTION_POOL_SIZE")
+                    .long("connection-pool-size")
+                    .takes_value(true)
+                    .default_value("4096"),
+            )
+            .arg(
                 Arg::with_name("THREADS")
                     .short("t")
                     .long("threads")
@@ -238,8 +271,16 @@ impl SubCommandRequest {
                 .parse()
                 .map_err(Failure::from_error,)
         );
+        let connection_pool_size = track_try_unwrap!(
+            matches
+                .value_of("CONNECTION_POOL_SIZE")
+                .unwrap()
+                .parse()
+                .map_err(Failure::from_error)
+        );
 
-        let requests = urls.iter()
+        let requests = urls
+            .iter()
             .cycle()
             .zip(0..requests)
             .map(|(url, _)| hb::request::Request {
@@ -253,12 +294,24 @@ impl SubCommandRequest {
         let requests = hb::run::RequestQueue::new(requests);
         let responses = if threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
-            track_try_unwrap!(execute_runner(logger, executor, concurrency, &requests))
+            track_try_unwrap!(execute_runner(
+                logger,
+                executor,
+                concurrency,
+                connection_pool_size,
+                &requests
+            ))
         } else {
             let executor = track_try_unwrap!(
                 ThreadPoolExecutor::with_thread_count(threads).map_err(Error::from)
             );
-            track_try_unwrap!(execute_runner(logger, executor, concurrency, &requests))
+            track_try_unwrap!(execute_runner(
+                logger,
+                executor,
+                concurrency,
+                connection_pool_size,
+                &requests
+            ))
         };
         match matches.value_of("OUTPUT").unwrap() {
             "-" => {
