@@ -243,7 +243,7 @@ impl SubCommandRequest {
         logger: Logger,
         matches: &ArgMatches,
         method: hb::request::Method,
-        content: Option<hb::request::Content>,
+        content: Option<&hb::request::Content>,
     ) {
         let mut urls = Vec::new();
         for url in matches.values_of("URL").unwrap() {
@@ -286,7 +286,7 @@ impl SubCommandRequest {
             .map(|(url, _)| hb::request::Request {
                 method,
                 url: url.clone(),
-                content: content.clone(),
+                content: content.cloned(),
                 timeout: None,
                 start_time: None,
             })
@@ -376,7 +376,7 @@ impl SubCommandPut {
         } else {
             None
         };
-        SubCommandRequest::execute(logger, matches, hb::request::Method::Put, content)
+        SubCommandRequest::execute(logger, matches, hb::request::Method::Put, content.as_ref())
     }
 }
 
@@ -400,7 +400,7 @@ impl SubCommandPost {
         } else {
             None
         };
-        SubCommandRequest::execute(logger, matches, hb::request::Method::Post, content)
+        SubCommandRequest::execute(logger, matches, hb::request::Method::Post, content.as_ref())
     }
 }
 

@@ -150,7 +150,7 @@ pub struct RunRequest {
     future: Box<Future<Item = HttpResponse<Vec<u8>>, Error = Error> + Send + 'static>,
 }
 impl RunRequest {
-    pub fn new(request: Request, client: &mut Client<ConnectionPoolHandle>) -> Result<Self> {
+    pub fn new(request: &Request, client: &mut Client<ConnectionPoolHandle>) -> Result<Self> {
         let future = request.call(client, request.timeout.map(|t| t.to_duration()));
         Ok(RunRequest { future })
     }
@@ -270,7 +270,7 @@ impl Future for ClientFiber {
                         self.start_time = time::Instant::now();
 
                         let mut client = Client::new(self.pool.clone());
-                        let future = track!(RunRequest::new(request, &mut client))?;
+                        let future = track!(RunRequest::new(&request, &mut client))?;
                         self.future = Some(future);
                     } else {
                         return Ok(Async::Ready(()));
