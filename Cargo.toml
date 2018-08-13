@@ -23,6 +23,6 @@ serde_derive = "1"
 serdeconv = "0.3"
 slog = "2"
 sloggers = "0.2"
-trackable = "0.2"
+trackable = { version = "0.2", features = ["serialize"] }
 url = "1"
 url_serde = "0.2"

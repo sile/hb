@@ -15,7 +15,7 @@ pub enum ErrorKind {
 }
 impl TrackableErrorKind for ErrorKind {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Error(TrackableError<ErrorKind>);
 derive_traits_for_trackable_error_newtype!(Error, ErrorKind);
 impl From<io::Error> for Error {
