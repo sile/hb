@@ -40,12 +40,10 @@ fn main() {
 
     let loglevel: sloggers::types::Severity =
         track_try_unwrap!(matches.value_of("LOGLEVEL").unwrap().parse());
-    let logger = track_try_unwrap!(
-        sloggers::terminal::TerminalLoggerBuilder::new()
-            .level(loglevel)
-            .destination(sloggers::terminal::Destination::Stderr)
-            .build()
-    );
+    let logger = track_try_unwrap!(sloggers::terminal::TerminalLoggerBuilder::new()
+        .level(loglevel)
+        .destination(sloggers::terminal::Destination::Stderr)
+        .build());
 
     if let Some(matches) = matches.subcommand_matches("run") {
         SubCommandRun::execute(logger, matches);
@@ -136,28 +134,22 @@ impl SubCommandRun {
             }
         };
 
-        let threads: usize = track_try_unwrap!(
-            matches
-                .value_of("THREADS")
-                .unwrap()
-                .parse()
-                .map_err(Failure::from_error)
-        );
+        let threads: usize = track_try_unwrap!(matches
+            .value_of("THREADS")
+            .unwrap()
+            .parse()
+            .map_err(Failure::from_error));
 
-        let concurrency = track_try_unwrap!(
-            matches
-                .value_of("CONCURRENCY")
-                .unwrap()
-                .parse()
-                .map_err(Failure::from_error)
-        );
-        let connection_pool_size = track_try_unwrap!(
-            matches
-                .value_of("CONNECTION_POOL_SIZE")
-                .unwrap()
-                .parse()
-                .map_err(Failure::from_error)
-        );
+        let concurrency = track_try_unwrap!(matches
+            .value_of("CONCURRENCY")
+            .unwrap()
+            .parse()
+            .map_err(Failure::from_error));
+        let connection_pool_size = track_try_unwrap!(matches
+            .value_of("CONNECTION_POOL_SIZE")
+            .unwrap()
+            .parse()
+            .map_err(Failure::from_error));
         let responses = if threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
             track_try_unwrap!(execute_runner(
@@ -250,34 +242,26 @@ impl SubCommandRequest {
             let url = track_try_unwrap!(Url::parse(url).map_err(Failure::from_error));
             urls.push(url);
         }
-        let requests: usize = track_try_unwrap!(
-            matches
-                .value_of("REQUESTS",)
-                .unwrap()
-                .parse()
-                .map_err(Failure::from_error,)
-        );
-        let threads: usize = track_try_unwrap!(
-            matches
-                .value_of("THREADS",)
-                .unwrap()
-                .parse()
-                .map_err(Failure::from_error,)
-        );
-        let concurrency: usize = track_try_unwrap!(
-            matches
-                .value_of("CONCURRENCY",)
-                .unwrap()
-                .parse()
-                .map_err(Failure::from_error,)
-        );
-        let connection_pool_size = track_try_unwrap!(
-            matches
-                .value_of("CONNECTION_POOL_SIZE")
-                .unwrap()
-                .parse()
-                .map_err(Failure::from_error)
-        );
+        let requests: usize = track_try_unwrap!(matches
+            .value_of("REQUESTS",)
+            .unwrap()
+            .parse()
+            .map_err(Failure::from_error,));
+        let threads: usize = track_try_unwrap!(matches
+            .value_of("THREADS",)
+            .unwrap()
+            .parse()
+            .map_err(Failure::from_error,));
+        let concurrency: usize = track_try_unwrap!(matches
+            .value_of("CONCURRENCY",)
+            .unwrap()
+            .parse()
+            .map_err(Failure::from_error,));
+        let connection_pool_size = track_try_unwrap!(matches
+            .value_of("CONNECTION_POOL_SIZE")
+            .unwrap()
+            .parse()
+            .map_err(Failure::from_error));
 
         let requests = urls
             .iter()
