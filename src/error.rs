@@ -1,5 +1,6 @@
 use fibers::sync::oneshot::MonitorError;
 use fibers_http_client;
+use serde::{Deserialize, Serialize};
 use serdeconv;
 use std;
 use std::io;

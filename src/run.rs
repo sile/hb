@@ -1,3 +1,5 @@
+use crate::request::Request;
+use crate::{Error, ErrorKind, Result};
 use fibers::sync::mpsc;
 use fibers::time::timer;
 use fibers::Spawn;
@@ -5,6 +7,7 @@ use fibers_http_client::connection::{ConnectionPool, ConnectionPoolBuilder, Conn
 use fibers_http_client::Client;
 use futures::{Async, Future, Poll, Stream};
 use httpcodec::Response as HttpResponse;
+use serde::{Deserialize, Serialize};
 use serdeconv;
 use slog::Logger;
 use std::collections::BinaryHeap;
@@ -12,9 +15,6 @@ use std::io::Read;
 use std::mem;
 use std::sync::{Arc, Mutex};
 use std::time::{self, Duration};
-
-use request::Request;
-use {Error, ErrorKind, Result};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Seconds(pub f64);

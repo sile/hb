@@ -1,16 +1,16 @@
+use crate::run::Seconds;
+use crate::{Error, ErrorKind, Result};
 use fibers_http_client::connection::ConnectionPoolHandle;
 use fibers_http_client::Client;
 use futures::Future;
 use httpcodec::Response;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 use url::Url;
 use url_serde;
-
-use run::Seconds;
-use {Error, ErrorKind, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {

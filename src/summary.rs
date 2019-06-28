@@ -1,6 +1,6 @@
+use crate::run::{RequestResult, Seconds};
+use serde::Serialize;
 use std::collections::BTreeMap;
-
-use run::{RequestResult, Seconds};
 
 #[derive(Debug, Serialize)]
 pub struct Summary {
