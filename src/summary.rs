@@ -93,7 +93,7 @@ fn unbiased_variance(samples: &[Seconds]) -> f64 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use run::Seconds;
+    use crate::run::Seconds;
 
     #[test]
     fn var_works() {
