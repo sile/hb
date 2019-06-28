@@ -89,8 +89,6 @@ impl RequestResult {
 pub struct Response {
     pub status: u16,
     pub content_length: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -163,7 +161,6 @@ impl Future for RunRequest {
             let response = Response {
                 status: response.status_code().as_u16(),
                 content_length: response.body().len() as u64,
-                content: String::from_utf8(response.into_body()).ok(),
             };
             Ok(Async::Ready(response))
         } else {
