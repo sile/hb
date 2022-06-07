@@ -22,7 +22,7 @@ httpcodec = "0.2"
 serde = { version = "1", features = ["derive"] }
 serdeconv = "0.3"
 slog = "2"
-sloggers = "0.3"
+sloggers = "2"
 trackable = { version = "0.2", features = ["serialize"] }
 url = "1"
 url_serde = "0.2"
