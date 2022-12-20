@@ -41,7 +41,7 @@ impl Request {
         &self,
         client: &mut Client<ConnectionPoolHandle>,
         timeout: Option<Duration>,
-    ) -> Box<Future<Item = Response<Vec<u8>>, Error = Error> + Send + 'static> {
+    ) -> Box<dyn Future<Item = Response<Vec<u8>>, Error = Error> + Send + 'static> {
         let mut request = client.request(&self.url);
         if let Some(timeout) = timeout {
             request = request.timeout(timeout);

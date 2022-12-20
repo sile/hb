@@ -1,8 +1,5 @@
 use fibers::sync::oneshot::MonitorError;
-use fibers_http_client;
 use serde::{Deserialize, Serialize};
-use serdeconv;
-use std;
 use std::io;
 use std::sync::mpsc::{RecvError, SendError};
 use std::sync::PoisonError;
@@ -16,9 +13,8 @@ pub enum ErrorKind {
 }
 impl TrackableErrorKind for ErrorKind {}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, trackable::TrackableError)]
 pub struct Error(TrackableError<ErrorKind>);
-derive_traits_for_trackable_error_newtype!(Error, ErrorKind);
 impl From<io::Error> for Error {
     fn from(f: io::Error) -> Self {
         ErrorKind::Other.cause(f).into()

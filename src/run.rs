@@ -16,7 +16,7 @@ use std::mem;
 use std::sync::{Arc, Mutex};
 use std::time::{self, Duration};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Seconds(pub f64);
 impl Seconds {
     fn to_duration(self) -> Duration {
@@ -24,6 +24,11 @@ impl Seconds {
     }
 }
 impl Eq for Seconds {}
+impl PartialOrd for Seconds {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
 impl Ord for Seconds {
     fn cmp(&self, other: &Self) -> ::std::cmp::Ordering {
         Duration::from(*self).cmp(&Duration::from(*other))
@@ -59,11 +64,7 @@ pub enum RequestResult {
 }
 impl RequestResult {
     pub fn is_ok(&self) -> bool {
-        if let RequestResult::Ok { .. } = *self {
-            true
-        } else {
-            false
-        }
+        matches!(self, RequestResult::Ok { .. })
     }
     pub fn seq_no(&self) -> usize {
         match *self {
@@ -145,7 +146,7 @@ impl RequestQueue {
 }
 
 pub struct RunRequest {
-    future: Box<Future<Item = HttpResponse<Vec<u8>>, Error = Error> + Send + 'static>,
+    future: Box<dyn Future<Item = HttpResponse<Vec<u8>>, Error = Error> + Send + 'static>,
 }
 impl RunRequest {
     pub fn new(request: &Request, client: &mut Client<ConnectionPoolHandle>) -> Result<Self> {
@@ -318,7 +319,6 @@ impl RunnerBuilder {
             spawner.spawn(future.map_err(|e| panic!("Error: {}", e)));
         }
         Runner {
-            logger,
             responses,
             response_rx,
             connection_pool,
@@ -336,7 +336,6 @@ impl Default for RunnerBuilder {
 
 #[derive(Debug)]
 pub struct Runner {
-    logger: Logger,
     responses: Vec<RequestResult>,
     response_rx: mpsc::Receiver<RequestResult>,
     connection_pool: ConnectionPool,
@@ -357,7 +356,7 @@ impl Future for Runner {
             if let Some(response) = polled {
                 self.responses.push(response);
                 if self.responses.len() == self.responses.capacity() {
-                    let mut responses = mem::replace(&mut self.responses, Vec::new());
+                    let mut responses = mem::take(&mut self.responses);
                     responses.sort_by_key(|r| r.seq_no());
                     return Ok(Async::Ready(responses));
                 }
