@@ -1,69 +1,53 @@
 #[macro_use]
-extern crate clap;
-extern crate fibers;
-extern crate hb;
-extern crate serdeconv;
-extern crate slog;
-extern crate sloggers;
-#[macro_use]
 extern crate trackable;
-extern crate url;
 
-use clap::{App, Arg, ArgMatches, SubCommand};
+use clap::Parser;
 use fibers::{Executor, InPlaceExecutor, Spawn, ThreadPoolExecutor};
 use hb::Error;
 use slog::Logger;
 use sloggers::Build;
 use std::fs::File;
 use std::io::{self, BufReader};
-use trackable::error::Failure;
-use url::Url;
+
+#[derive(Parser)]
+#[clap(version)]
+struct Args {
+    #[clap(short, long, default_value = "warning")]
+    loglevel: String,
+
+    #[clap(subcommand)]
+    command: Command,
+}
+
+#[derive(clap::Subcommand)]
+enum Command {
+    Run(RunCommand),
+    Get(GetCommand),
+    Head(HeadCommand),
+    Delete(DeleteCommand),
+    Put(PutCommand),
+    Post(PostCommand),
+    Summary(SummaryCommand),
+    TimeSeries(TimeSeriesCommand),
+}
 
 fn main() {
-    let matches = app_from_crate!()
-        .arg(
-            Arg::with_name("LOGLEVEL")
-                .short("l")
-                .long("loglevel")
-                .takes_value(true)
-                .default_value("warning"),
-        )
-        .subcommand(SubCommandRun::app())
-        .subcommand(SubCommandGet::app())
-        .subcommand(SubCommandHead::app())
-        .subcommand(SubCommandDelete::app())
-        .subcommand(SubCommandPut::app())
-        .subcommand(SubCommandPost::app())
-        .subcommand(SubCommandSummary::app())
-        .subcommand(SubCommandTimeSeries::app())
-        .get_matches();
-
-    let loglevel: sloggers::types::Severity =
-        track_try_unwrap!(matches.value_of("LOGLEVEL").unwrap().parse());
+    let args = Args::parse();
+    let loglevel: sloggers::types::Severity = track_try_unwrap!(args.loglevel.parse());
     let logger = track_try_unwrap!(sloggers::terminal::TerminalLoggerBuilder::new()
         .level(loglevel)
         .destination(sloggers::terminal::Destination::Stderr)
         .build());
 
-    if let Some(matches) = matches.subcommand_matches("run") {
-        SubCommandRun::execute(logger, matches);
-    } else if let Some(matches) = matches.subcommand_matches("get") {
-        SubCommandGet::execute(logger, matches);
-    } else if let Some(matches) = matches.subcommand_matches("head") {
-        SubCommandHead::execute(logger, matches);
-    } else if let Some(matches) = matches.subcommand_matches("delete") {
-        SubCommandDelete::execute(logger, matches);
-    } else if let Some(matches) = matches.subcommand_matches("put") {
-        SubCommandPut::execute(logger, matches);
-    } else if let Some(matches) = matches.subcommand_matches("post") {
-        SubCommandPost::execute(logger, matches);
-    } else if let Some(matches) = matches.subcommand_matches("summary") {
-        SubCommandSummary::execute(matches);
-    } else if let Some(matches) = matches.subcommand_matches("time-series") {
-        SubCommandTimeSeries::execute(matches);
-    } else {
-        println!("Usage: {}", matches.usage());
-        std::process::exit(1);
+    match args.command {
+        Command::Run(c) => c.execute(logger),
+        Command::Get(c) => c.execute(logger),
+        Command::Head(c) => c.execute(logger),
+        Command::Delete(c) => c.execute(logger),
+        Command::Put(c) => c.execute(logger),
+        Command::Post(c) => c.execute(logger),
+        Command::Summary(c) => c.execute(logger),
+        Command::TimeSeries(c) => c.execute(logger),
     }
 }
 
@@ -83,47 +67,27 @@ fn execute_runner<E: Executor>(
     track!(result.map_err(Error::from))
 }
 
-struct SubCommandRun;
-impl SubCommandRun {
-    fn app() -> App<'static, 'static> {
-        SubCommand::with_name("run")
-            .arg(
-                Arg::with_name("INPUT")
-                    .short("i")
-                    .long("input")
-                    .takes_value(true)
-                    .default_value("-"),
-            )
-            .arg(
-                Arg::with_name("OUTPUT")
-                    .short("o")
-                    .long("output")
-                    .takes_value(true)
-                    .default_value("-"),
-            )
-            .arg(
-                Arg::with_name("CONCURRENCY")
-                    .short("c")
-                    .long("concurrency")
-                    .takes_value(true)
-                    .default_value("32"),
-            )
-            .arg(
-                Arg::with_name("CONNECTION_POOL_SIZE")
-                    .long("connection-pool-size")
-                    .takes_value(true)
-                    .default_value("4096"),
-            )
-            .arg(
-                Arg::with_name("THREADS")
-                    .short("t")
-                    .long("threads")
-                    .takes_value(true)
-                    .default_value("2"),
-            )
-    }
-    fn execute(logger: Logger, matches: &ArgMatches) {
-        let requests = match matches.value_of("INPUT").unwrap() {
+#[derive(clap::Args)]
+struct RunCommand {
+    #[clap(short, long, default_value = "-")]
+    input: String,
+
+    #[clap(short, long, default_value = "-")]
+    output: String,
+
+    #[clap(short, long, default_value_t = 32)]
+    concurrency: usize,
+
+    #[clap(long, default_value_t = 4096)]
+    connection_pool_size: usize,
+
+    #[clap(short, long, default_value_t = 2)]
+    threads: usize,
+}
+
+impl RunCommand {
+    fn execute(&self, logger: Logger) {
+        let requests = match self.input.as_str() {
             "-" => {
                 let stdin = io::stdin();
                 track_try_unwrap!(hb::run::RequestQueue::read_from(stdin.lock()))
@@ -134,45 +98,29 @@ impl SubCommandRun {
             }
         };
 
-        let threads: usize = track_try_unwrap!(matches
-            .value_of("THREADS")
-            .unwrap()
-            .parse()
-            .map_err(Failure::from_error));
-
-        let concurrency = track_try_unwrap!(matches
-            .value_of("CONCURRENCY")
-            .unwrap()
-            .parse()
-            .map_err(Failure::from_error));
-        let connection_pool_size = track_try_unwrap!(matches
-            .value_of("CONNECTION_POOL_SIZE")
-            .unwrap()
-            .parse()
-            .map_err(Failure::from_error));
-        let responses = if threads == 1 {
+        let responses = if self.threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
             track_try_unwrap!(execute_runner(
                 logger,
                 executor,
-                concurrency,
-                connection_pool_size,
+                self.concurrency,
+                self.connection_pool_size,
                 &requests
             ))
         } else {
             let executor = track_try_unwrap!(
-                ThreadPoolExecutor::with_thread_count(threads).map_err(Error::from)
+                ThreadPoolExecutor::with_thread_count(self.threads).map_err(Error::from)
             );
             track_try_unwrap!(execute_runner(
                 logger,
                 executor,
-                concurrency,
-                connection_pool_size,
+                self.concurrency,
+                self.connection_pool_size,
                 &requests
             ))
         };
 
-        match matches.value_of("OUTPUT").unwrap() {
+        match self.output.as_str() {
             "-" => {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, io::stdout()));
                 println!();
@@ -185,88 +133,38 @@ impl SubCommandRun {
     }
 }
 
-struct SubCommandRequest;
-impl SubCommandRequest {
-    fn app(method: &'static str) -> App<'static, 'static> {
-        SubCommand::with_name(method)
-            .arg(
-                Arg::with_name("URL")
-                    .index(1)
-                    .required(true)
-                    .multiple(true)
-                    .min_values(1),
-            )
-            .arg(
-                Arg::with_name("REQUESTS")
-                    .short("n")
-                    .long("requests")
-                    .takes_value(true)
-                    .default_value("10"),
-            )
-            .arg(
-                Arg::with_name("OUTPUT")
-                    .short("o")
-                    .long("output")
-                    .takes_value(true)
-                    .default_value("-"),
-            )
-            .arg(
-                Arg::with_name("CONCURRENCY")
-                    .short("c")
-                    .long("concurrency")
-                    .takes_value(true)
-                    .default_value("32"),
-            )
-            .arg(
-                Arg::with_name("CONNECTION_POOL_SIZE")
-                    .long("connection-pool-size")
-                    .takes_value(true)
-                    .default_value("4096"),
-            )
-            .arg(
-                Arg::with_name("THREADS")
-                    .short("t")
-                    .long("threads")
-                    .takes_value(true)
-                    .default_value("1"),
-            )
-    }
+#[derive(clap::Args)]
+struct RequestCommand {
+    urls: Vec<url::Url>,
+
+    #[clap(short = 'n', long, default_value_t = 10)]
+    requests: usize,
+
+    #[clap(short, long, default_value = "-")]
+    output: String,
+
+    #[clap(short, long, default_value_t = 32)]
+    concurrency: usize,
+
+    #[clap(long, default_value_t = 4096)]
+    connection_pool_size: usize,
+
+    #[clap(short, long, default_value_t = 2)]
+    threads: usize,
+}
+
+impl RequestCommand {
     fn execute(
+        &self,
         logger: Logger,
-        matches: &ArgMatches,
         method: hb::request::Method,
         content: Option<&hb::request::Content>,
     ) {
-        let mut urls = Vec::new();
-        for url in matches.values_of("URL").unwrap() {
-            let url = track_try_unwrap!(Url::parse(url).map_err(Failure::from_error));
-            urls.push(url);
-        }
-        let requests: usize = track_try_unwrap!(matches
-            .value_of("REQUESTS",)
-            .unwrap()
-            .parse()
-            .map_err(Failure::from_error,));
-        let threads: usize = track_try_unwrap!(matches
-            .value_of("THREADS",)
-            .unwrap()
-            .parse()
-            .map_err(Failure::from_error,));
-        let concurrency: usize = track_try_unwrap!(matches
-            .value_of("CONCURRENCY",)
-            .unwrap()
-            .parse()
-            .map_err(Failure::from_error,));
-        let connection_pool_size = track_try_unwrap!(matches
-            .value_of("CONNECTION_POOL_SIZE")
-            .unwrap()
-            .parse()
-            .map_err(Failure::from_error));
-
-        let requests = urls
+        let requests = self
+            .urls
             .iter()
             .cycle()
-            .zip(0..requests)
+            .zip(0..self.requests)
             .map(|(url, _)| hb::request::Request {
                 method,
                 url: url.clone(),
@@ -276,28 +174,28 @@ impl SubCommandRequest {
             })
             .collect();
         let requests = hb::run::RequestQueue::new(requests);
-        let responses = if threads == 1 {
+        let responses = if self.threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
             track_try_unwrap!(execute_runner(
                 logger,
                 executor,
-                concurrency,
-                connection_pool_size,
+                self.concurrency,
+                self.connection_pool_size,
                 &requests
             ))
         } else {
             let executor = track_try_unwrap!(
-                ThreadPoolExecutor::with_thread_count(threads).map_err(Error::from)
+                ThreadPoolExecutor::with_thread_count(self.threads).map_err(Error::from)
             );
             track_try_unwrap!(execute_runner(
                 logger,
                 executor,
-                concurrency,
-                connection_pool_size,
+                self.concurrency,
+                self.connection_pool_size,
                 &requests
             ))
         };
-        match matches.value_of("OUTPUT").unwrap() {
+        match self.output.as_str() {
             "-" => {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&responses, io::stdout()));
                 println!();
@@ -310,105 +208,94 @@ impl SubCommandRequest {
     }
 }
 
-struct SubCommandGet;
-impl SubCommandGet {
-    fn app() -> App<'static, 'static> {
-        SubCommandRequest::app("get")
-    }
-    fn execute(logger: Logger, matches: &ArgMatches) {
-        SubCommandRequest::execute(logger, matches, hb::request::Method::Get, None)
+#[derive(clap::Args)]
+struct GetCommand {
+    #[clap(flatten)]
+    request: RequestCommand,
+}
+
+impl GetCommand {
+    fn execute(&self, logger: Logger) {
+        self.request.execute(logger, hb::request::Method::Get, None);
     }
 }
 
-struct SubCommandHead;
-impl SubCommandHead {
-    fn app() -> App<'static, 'static> {
-        SubCommandRequest::app("head")
-    }
-    fn execute(logger: Logger, matches: &ArgMatches) {
-        SubCommandRequest::execute(logger, matches, hb::request::Method::Head, None)
+#[derive(clap::Args)]
+struct HeadCommand {
+    #[clap(flatten)]
+    request: RequestCommand,
+}
+
+impl HeadCommand {
+    fn execute(&self, logger: Logger) {
+        self.request
+            .execute(logger, hb::request::Method::Head, None);
     }
 }
 
-struct SubCommandDelete;
-impl SubCommandDelete {
-    fn app() -> App<'static, 'static> {
-        SubCommandRequest::app("delete")
-    }
-    fn execute(logger: Logger, matches: &ArgMatches) {
-        SubCommandRequest::execute(logger, matches, hb::request::Method::Delete, None)
+#[derive(clap::Args)]
+struct DeleteCommand {
+    #[clap(flatten)]
+    request: RequestCommand,
+}
+
+impl DeleteCommand {
+    fn execute(&self, logger: Logger) {
+        self.request
+            .execute(logger, hb::request::Method::Delete, None);
     }
 }
 
-struct SubCommandPut;
-impl SubCommandPut {
-    fn app() -> App<'static, 'static> {
-        SubCommandRequest::app("put")
-            .arg(
-                Arg::with_name("CONTENT_LENGTH")
-                    .long("content-length")
-                    .takes_value(true),
-            )
-            .arg(Arg::with_name("CONTENT").long("content").takes_value(true))
+#[derive(clap::Args)]
+struct PutCommand {
+    #[clap(flatten)]
+    request: RequestCommand,
+}
+
+impl PutCommand {
+    fn execute(&self, logger: Logger) {
+        self.request.execute(logger, hb::request::Method::Put, None);
     }
-    fn execute(logger: Logger, matches: &ArgMatches) {
-        let content = if let Some(text) = matches.value_of("CONTENT") {
+}
+
+#[derive(clap::Args)]
+struct PostCommand {
+    #[clap(flatten)]
+    request: RequestCommand,
+
+    #[clap(long)]
+    content_length: Option<usize>,
+
+    #[clap(long)]
+    content: Option<String>,
+}
+
+impl PostCommand {
+    fn execute(&self, logger: Logger) {
+        let content = if let Some(text) = &self.content {
             Some(hb::request::Content::Text(text.to_owned()))
-        } else if let Some(len) = matches.value_of("CONTENT_LENGTH") {
-            let len: usize = track_try_unwrap!(len.parse().map_err(Failure::from_error));
+        } else if let Some(len) = self.content_length {
             Some(hb::request::Content::Size(len))
         } else {
             None
         };
-        SubCommandRequest::execute(logger, matches, hb::request::Method::Put, content.as_ref())
+        self.request
+            .execute(logger, hb::request::Method::Post, content.as_ref())
     }
 }
 
-struct SubCommandPost;
-impl SubCommandPost {
-    fn app() -> App<'static, 'static> {
-        SubCommandRequest::app("post")
-            .arg(
-                Arg::with_name("CONTENT_LENGTH")
-                    .long("content-length")
-                    .takes_value(true),
-            )
-            .arg(Arg::with_name("CONTENT").long("content").takes_value(true))
-    }
-    fn execute(logger: Logger, matches: &ArgMatches) {
-        let content = if let Some(text) = matches.value_of("CONTENT") {
-            Some(hb::request::Content::Text(text.to_owned()))
-        } else if let Some(len) = matches.value_of("CONTENT_LENGTH") {
-            let len: usize = track_try_unwrap!(len.parse().map_err(Failure::from_error));
-            Some(hb::request::Content::Size(len))
-        } else {
-            None
-        };
-        SubCommandRequest::execute(logger, matches, hb::request::Method::Post, content.as_ref())
-    }
+#[derive(clap::Args)]
+struct SummaryCommand {
+    #[clap(short, long, default_value = "-")]
+    input: String,
+
+    #[clap(short, long, default_value = "-")]
+    output: String,
 }
 
-struct SubCommandSummary;
-impl SubCommandSummary {
-    fn app() -> App<'static, 'static> {
-        SubCommand::with_name("summary")
-            .arg(
-                Arg::with_name("INPUT")
-                    .short("i")
-                    .long("input")
-                    .takes_value(true)
-                    .default_value("-"),
-            )
-            .arg(
-                Arg::with_name("OUTPUT")
-                    .short("o")
-                    .long("output")
-                    .takes_value(true)
-                    .default_value("-"),
-            )
-    }
-    fn execute(matches: &ArgMatches) {
-        let responses = match matches.value_of("INPUT").unwrap() {
+impl SummaryCommand {
+    fn execute(&self, _logger: Logger) {
+        let responses = match self.input.as_str() {
             "-" => {
                 let stdin = io::stdin();
                 track_try_unwrap!(serdeconv::from_json_reader(stdin.lock()))
@@ -419,7 +306,7 @@ impl SubCommandSummary {
             }
         };
         let summary = hb::summary::Summary::new(responses);
-        match matches.value_of("OUTPUT").unwrap() {
+        match self.output.as_str() {
             "-" => {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&summary, io::stdout()));
                 println!();
@@ -432,27 +319,18 @@ impl SubCommandSummary {
     }
 }
 
-struct SubCommandTimeSeries;
-impl SubCommandTimeSeries {
-    fn app() -> App<'static, 'static> {
-        SubCommand::with_name("time-series")
-            .arg(
-                Arg::with_name("INPUT")
-                    .short("i")
-                    .long("input")
-                    .takes_value(true)
-                    .default_value("-"),
-            )
-            .arg(
-                Arg::with_name("OUTPUT")
-                    .short("o")
-                    .long("output")
-                    .takes_value(true)
-                    .default_value("-"),
-            )
-    }
-    fn execute(matches: &ArgMatches) {
-        let responses = match matches.value_of("INPUT").unwrap() {
+#[derive(clap::Args)]
+struct TimeSeriesCommand {
+    #[clap(short, long, default_value = "-")]
+    input: String,
+
+    #[clap(short, long, default_value = "-")]
+    output: String,
+}
+
+impl TimeSeriesCommand {
+    fn execute(&self, _logger: Logger) {
+        let responses = match self.input.as_str() {
             "-" => {
                 let stdin = io::stdin();
                 track_try_unwrap!(serdeconv::from_json_reader(stdin.lock()))
@@ -463,7 +341,7 @@ impl SubCommandTimeSeries {
             }
         };
         let summary = hb::time_series::TimeSeries::new(responses);
-        match matches.value_of("OUTPUT").unwrap() {
+        match self.output.as_str() {
             "-" => {
                 track_try_unwrap!(serdeconv::to_json_writer_pretty(&summary, io::stdout()));
                 println!();

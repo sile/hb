@@ -10,12 +10,10 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 use url::Url;
-use url_serde;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub method: Method,
-    #[serde(with = "url_serde")]
     pub url: Url,
     pub content: Option<Content>,
     pub timeout: Option<Seconds>,

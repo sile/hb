@@ -14,15 +14,14 @@ travis-ci = {repository = "sile/hb"}
 codecov = {repository = "sile/hb"}
 
 [dependencies]
-clap = "2"
+clap = { version = "4", features = ["derive"] }
 fibers = "0.1"
-fibers_http_client = "0.1"
+fibers_http_client = "0.2"
 futures = "0.1"
 httpcodec = "0.2"
 serde = { version = "1", features = ["derive"] }
-serdeconv = "0.3"
+serdeconv = "0.4"
 slog = "2"
 sloggers = "2"
 trackable = { version = "1", features = ["serialize"] }
-url = "1"
-url_serde = "0.2"
+url = { version = "2", features = ["serde"] }
