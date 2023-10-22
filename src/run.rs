@@ -9,7 +9,6 @@ use futures::{Async, Future, Poll, Stream};
 use httpcodec::Response as HttpResponse;
 use serde::{Deserialize, Serialize};
 use serdeconv;
-use slog::Logger;
 use std::collections::BinaryHeap;
 use std::io::Read;
 use std::mem;
@@ -171,7 +170,6 @@ impl Future for RunRequest {
 }
 
 pub struct ClientFiber {
-    logger: Logger,
     pool: ConnectionPoolHandle,
     requests: RequestQueue,
     response_tx: mpsc::Sender<RequestResult>,
@@ -183,15 +181,13 @@ pub struct ClientFiber {
 }
 impl ClientFiber {
     pub fn new(
-        logger: Logger,
         pool: ConnectionPoolHandle,
         bench_start: time::Instant,
         requests: RequestQueue,
         response_tx: mpsc::Sender<RequestResult>,
     ) -> Self {
-        info!(logger, "Starts a client");
+        log::info!("Starts a client");
         ClientFiber {
-            logger,
             pool,
             last_seq_no: 0,
             start_time: time::Instant::now(),
@@ -222,14 +218,13 @@ impl Future for ClientFiber {
                         elapsed: self.start_time.elapsed().into(),
                         error: e.clone(),
                     };
-                    info!(
-                        self.logger,
+                    log::info!(
                         "Failed to request: seq_no={}, error={:?}, elapsed={}",
                         result.seq_no(),
                         e.kind(),
                         result.elapsed().0
                     );
-                    debug!(self.logger, "{}", e);
+                    log::debug!("{}", e);
                     track!(self.response_tx.send(result).map_err(Error::from))?;
                     self.future = None;
                 }
@@ -240,8 +235,7 @@ impl Future for ClientFiber {
                         elapsed: self.start_time.elapsed().into(),
                         response,
                     };
-                    info!(
-                        self.logger,
+                    log::info!(
                         "Succeeded to request: seq_no={}, elapsed={}",
                         result.seq_no(),
                         result.elapsed().0
@@ -256,14 +250,14 @@ impl Future for ClientFiber {
                             let start_time = Duration::from(start_time);
                             if elapsed <= start_time {
                                 let wait = start_time - elapsed;
-                                info!(self.logger, "Wait: {:?}", wait);
+                                log::info!("Wait: {:?}", wait);
                                 self.next_start = Some(timer::timeout(wait));
                                 track!(self.requests.push(seq_no, request))?;
                                 continue;
                             }
                         }
 
-                        info!(self.logger, "New request is started: seq_no={}", seq_no);
+                        log::info!("New request is started: seq_no={}", seq_no);
                         self.last_seq_no = seq_no;
                         self.start_time = time::Instant::now();
 
@@ -297,7 +291,7 @@ impl RunnerBuilder {
         self.connection_pool_size = size;
         self
     }
-    pub fn finish<S>(&self, logger: Logger, spawner: &S, requests: &RequestQueue) -> Runner
+    pub fn finish<S>(&self, spawner: &S, requests: &RequestQueue) -> Runner
     where
         S: Spawn + Clone + Send + 'static,
     {
@@ -307,10 +301,8 @@ impl RunnerBuilder {
             .max_pool_size(self.connection_pool_size)
             .finish(spawner.clone());
         let (response_tx, response_rx) = mpsc::channel();
-        for i in 0..self.concurrency {
-            let logger = logger.new(o!("id" => i));
+        for _ in 0..self.concurrency {
             let future = ClientFiber::new(
-                logger,
                 connection_pool.handle(),
                 bench_start,
                 requests.clone(),
@@ -341,11 +333,11 @@ pub struct Runner {
     connection_pool: ConnectionPool,
 }
 impl Runner {
-    pub fn new<S>(logger: Logger, spawner: &S, requests: &RequestQueue) -> Self
+    pub fn new<S>(spawner: &S, requests: &RequestQueue) -> Self
     where
         S: Spawn + Clone + Send + 'static,
     {
-        RunnerBuilder::new().finish(logger, spawner, requests)
+        RunnerBuilder::new().finish(spawner, requests)
     }
 }
 impl Future for Runner {

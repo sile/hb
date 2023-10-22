@@ -4,17 +4,12 @@ extern crate trackable;
 use clap::Parser;
 use fibers::{Executor, InPlaceExecutor, Spawn, ThreadPoolExecutor};
 use hb::Error;
-use slog::Logger;
-use sloggers::Build;
 use std::fs::File;
 use std::io::{self, BufReader};
 
 #[derive(Parser)]
 #[clap(version)]
 struct Args {
-    #[clap(short, long, default_value = "warning")]
-    loglevel: String,
-
     #[clap(subcommand)]
     command: Command,
 }
@@ -32,27 +27,22 @@ enum Command {
 }
 
 fn main() {
-    let args = Args::parse();
-    let loglevel: sloggers::types::Severity = track_try_unwrap!(args.loglevel.parse());
-    let logger = track_try_unwrap!(sloggers::terminal::TerminalLoggerBuilder::new()
-        .level(loglevel)
-        .destination(sloggers::terminal::Destination::Stderr)
-        .build());
+    env_logger::init();
 
+    let args = Args::parse();
     match args.command {
-        Command::Run(c) => c.execute(logger),
-        Command::Get(c) => c.execute(logger),
-        Command::Head(c) => c.execute(logger),
-        Command::Delete(c) => c.execute(logger),
-        Command::Put(c) => c.execute(logger),
-        Command::Post(c) => c.execute(logger),
-        Command::Summary(c) => c.execute(logger),
-        Command::TimeSeries(c) => c.execute(logger),
+        Command::Run(c) => c.execute(),
+        Command::Get(c) => c.execute(),
+        Command::Head(c) => c.execute(),
+        Command::Delete(c) => c.execute(),
+        Command::Put(c) => c.execute(),
+        Command::Post(c) => c.execute(),
+        Command::Summary(c) => c.execute(),
+        Command::TimeSeries(c) => c.execute(),
     }
 }
 
 fn execute_runner<E: Executor>(
-    logger: Logger,
     mut executor: E,
     concurrency: usize,
     connection_pool_size: usize,
@@ -61,7 +51,7 @@ fn execute_runner<E: Executor>(
     let runner = hb::run::RunnerBuilder::new()
         .concurrency(concurrency)
         .connection_pool_size(connection_pool_size)
-        .finish(logger, &executor.handle(), requests);
+        .finish(&executor.handle(), requests);
     let monitor = executor.handle().spawn_monitor(runner);
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
     track!(result.map_err(Error::from))
@@ -86,7 +76,7 @@ struct RunCommand {
 }
 
 impl RunCommand {
-    fn execute(&self, logger: Logger) {
+    fn execute(&self) {
         let requests = match self.input.as_str() {
             "-" => {
                 let stdin = io::stdin();
@@ -101,7 +91,6 @@ impl RunCommand {
         let responses = if self.threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
             track_try_unwrap!(execute_runner(
-                logger,
                 executor,
                 self.concurrency,
                 self.connection_pool_size,
@@ -112,7 +101,6 @@ impl RunCommand {
                 ThreadPoolExecutor::with_thread_count(self.threads).map_err(Error::from)
             );
             track_try_unwrap!(execute_runner(
-                logger,
                 executor,
                 self.concurrency,
                 self.connection_pool_size,
@@ -154,12 +142,7 @@ struct RequestCommand {
 }
 
 impl RequestCommand {
-    fn execute(
-        &self,
-        logger: Logger,
-        method: hb::request::Method,
-        content: Option<&hb::request::Content>,
-    ) {
+    fn execute(&self, method: hb::request::Method, content: Option<&hb::request::Content>) {
         let requests = self
             .urls
             .iter()
@@ -177,7 +160,6 @@ impl RequestCommand {
         let responses = if self.threads == 1 {
             let executor = track_try_unwrap!(InPlaceExecutor::new().map_err(Error::from));
             track_try_unwrap!(execute_runner(
-                logger,
                 executor,
                 self.concurrency,
                 self.connection_pool_size,
@@ -188,7 +170,6 @@ impl RequestCommand {
                 ThreadPoolExecutor::with_thread_count(self.threads).map_err(Error::from)
             );
             track_try_unwrap!(execute_runner(
-                logger,
                 executor,
                 self.concurrency,
                 self.connection_pool_size,
@@ -215,8 +196,8 @@ struct GetCommand {
 }
 
 impl GetCommand {
-    fn execute(&self, logger: Logger) {
-        self.request.execute(logger, hb::request::Method::Get, None);
+    fn execute(&self) {
+        self.request.execute(hb::request::Method::Get, None);
     }
 }
 
@@ -227,9 +208,8 @@ struct HeadCommand {
 }
 
 impl HeadCommand {
-    fn execute(&self, logger: Logger) {
-        self.request
-            .execute(logger, hb::request::Method::Head, None);
+    fn execute(&self) {
+        self.request.execute(hb::request::Method::Head, None);
     }
 }
 
@@ -240,9 +220,8 @@ struct DeleteCommand {
 }
 
 impl DeleteCommand {
-    fn execute(&self, logger: Logger) {
-        self.request
-            .execute(logger, hb::request::Method::Delete, None);
+    fn execute(&self) {
+        self.request.execute(hb::request::Method::Delete, None);
     }
 }
 
@@ -253,8 +232,8 @@ struct PutCommand {
 }
 
 impl PutCommand {
-    fn execute(&self, logger: Logger) {
-        self.request.execute(logger, hb::request::Method::Put, None);
+    fn execute(&self) {
+        self.request.execute(hb::request::Method::Put, None);
     }
 }
 
@@ -271,7 +250,7 @@ struct PostCommand {
 }
 
 impl PostCommand {
-    fn execute(&self, logger: Logger) {
+    fn execute(&self) {
         let content = if let Some(text) = &self.content {
             Some(hb::request::Content::Text(text.to_owned()))
         } else if let Some(len) = self.content_length {
@@ -280,7 +259,7 @@ impl PostCommand {
             None
         };
         self.request
-            .execute(logger, hb::request::Method::Post, content.as_ref())
+            .execute(hb::request::Method::Post, content.as_ref())
     }
 }
 
@@ -294,7 +273,7 @@ struct SummaryCommand {
 }
 
 impl SummaryCommand {
-    fn execute(&self, _logger: Logger) {
+    fn execute(&self) {
         let responses = match self.input.as_str() {
             "-" => {
                 let stdin = io::stdin();
@@ -329,7 +308,7 @@ struct TimeSeriesCommand {
 }
 
 impl TimeSeriesCommand {
-    fn execute(&self, _logger: Logger) {
+    fn execute(&self) {
         let responses = match self.input.as_str() {
             "-" => {
                 let stdin = io::stdin();

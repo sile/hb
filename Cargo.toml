@@ -15,13 +15,13 @@ codecov = {repository = "sile/hb"}
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+env_logger = "0.10.0"
 fibers = "0.1"
 fibers_http_client = "0.2"
 futures = "0.1"
 httpcodec = "0.2"
+log = "0.4.20"
 serde = { version = "1", features = ["derive"] }
 serdeconv = "0.4"
-slog = "2"
-sloggers = "2"
 trackable = { version = "1", features = ["serialize"] }
 url = { version = "2", features = ["serde"] }

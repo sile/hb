@@ -1,6 +1,4 @@
 #[macro_use]
-extern crate slog;
-#[macro_use]
 extern crate trackable;
 
 pub use error::{Error, ErrorKind};
